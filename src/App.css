@@ -697,6 +697,9 @@ nav span {
   background: transparent;
   -webkit-app-region: no-drag;
 }
+.desktop-overlay.is-settings-open {
+  padding: 8px;
+}
 .overlay-cluster {
   position: relative;
   display: grid;
@@ -871,11 +874,12 @@ nav span {
 }
 .overlay-settings {
   position: absolute;
-  z-index: 2;
-  left: 50%;
-  top: 10px;
-  width: min(316px, calc(100vw - 22px));
-  transform: translateX(-50%);
+  z-index: 4;
+  inset: 8px;
+  width: auto;
+  max-width: none;
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 13px;
   border: 1px solid rgba(255, 255, 255, 0.32);
   border-radius: 13px;
@@ -883,6 +887,33 @@ nav span {
   color: #fff;
   box-shadow: 0 16px 36px rgba(8, 15, 29, 0.45);
   -webkit-app-region: no-drag;
+}
+.overlay-dismiss {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(20, 33, 61, 0.94);
+  box-shadow: 0 4px 12px rgba(8, 15, 29, 0.32);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.overlay-dismiss:hover:not(:disabled) {
+  background: #ef4444;
+}
+.overlay-dismiss:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.overlay-settings .overlay-settings-heading {
+  padding-right: 34px;
 }
 .overlay-settings-heading,
 .overlay-switch-row,

@@ -632,9 +632,9 @@ function DesktopOverlay() {
       setCameraError("That camera could not be started.");
     }
   };
-  const closeOverlay = () => {
+  const closeOverlay = useCallback(() => {
     if (!recording && !finalizing) void window.capturely?.window.closeOverlay();
-  };
+  }, [finalizing, recording]);
   const showControls = () => {
     setControlsVisible(true);
     void window.capturely?.window.setOverlayInteractive(true);
@@ -644,6 +644,21 @@ function DesktopOverlay() {
     if (!overlayDragRef.current)
       void window.capturely?.window.setOverlayInteractive(false);
   };
+  const handleCloseButtonEnter = () => {
+    showControls();
+  };
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        return;
+      }
+      closeOverlay();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeOverlay, settingsOpen]);
   const startOverlayDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -673,7 +688,7 @@ function DesktopOverlay() {
 
   return (
     <main
-      className={`desktop-overlay ${controlsVisible || settingsOpen ? "is-controls-visible" : ""}`}
+      className={`desktop-overlay ${controlsVisible || settingsOpen ? "is-controls-visible" : ""} ${settingsOpen ? "is-settings-open" : ""}`}
       style={{ "--overlay-size": `${overlaySize}px` } as CSSProperties}
     >
       <div
@@ -831,138 +846,152 @@ function DesktopOverlay() {
             </Icon>
           </button>
         </div>
-        {settingsOpen && (
-          <section
-            className="overlay-settings no-drag"
-            aria-label="Overlay settings"
-          >
-            <div className="overlay-settings-heading">
-              <strong>Recording settings</strong>
-              <span>
-                {systemAudioAvailable === false
-                  ? "No system audio returned"
-                  : "Ready"}
-              </span>
-            </div>
-            <label>
-              Camera
-              <select
-                value={cameraId}
-                onChange={(event) => void changeCamera(event.target.value)}
-              >
-                <option value="default">Default camera</option>
-                {cameras.map((camera) => (
-                  <option key={camera.deviceId} value={camera.deviceId}>
-                    {camera.label || "Camera"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Microphone
-              <select
-                value={micId}
-                onChange={(event) => setMicId(event.target.value)}
-              >
-                <option value="default">Default microphone</option>
-                {audioInputs.map((microphone) => (
-                  <option key={microphone.deviceId} value={microphone.deviceId}>
-                    {microphone.label || "Microphone"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Quality
-              <select
-                value={quality}
-                onChange={(event) => setQuality(event.target.value as Quality)}
-              >
-                {qualityOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="overlay-shape-row">
-              <span>Recording mode</span>
-              <div>
-                <button
-                  className={captureMode === "screen" ? "chosen" : ""}
-                  onClick={() => setCaptureMode("screen")}
-                >
-                  Screen
-                </button>
-                <button
-                  className={captureMode === "camera" ? "chosen" : ""}
-                  onClick={() => {
-                    setCaptureMode("camera");
-                    setSystemAudio(false);
-                  }}
-                >
-                  Camera only
-                </button>
-              </div>
-            </div>
-            <div className="overlay-switch-row">
-              <span>System audio</span>
-              <Toggle
-                checked={captureMode === "screen" && systemAudio}
-                onChange={setSystemAudio}
-                label="System audio"
-                disabled={captureMode === "camera"}
-              />
-            </div>
-            <div className="overlay-switch-row">
-              <span>Voice isolation</span>
-              <Toggle
-                checked={voiceIsolation}
-                onChange={setVoiceIsolation}
-                label="Voice isolation"
-              />
-            </div>
-            <div className="overlay-shape-row">
-              <span>Camera shape</span>
-              <div>
-                <button
-                  className={shape === "circle" ? "chosen" : ""}
-                  onClick={() => setShape("circle")}
-                >
-                  Circle
-                </button>
-                <button
-                  className={shape === "square" ? "chosen" : ""}
-                  onClick={() => setShape("square")}
-                >
-                  Square
-                </button>
-                <button
-                  className={shape === "rectangle" ? "chosen" : ""}
-                  onClick={() => setShape("rectangle")}
-                >
-                  Rectangle
-                </button>
-              </div>
-            </div>
-            <label className="overlay-size-control">
-              Overlay size <b>{overlaySize}px</b>
-              <input
-                type="range"
-                min="160"
-                max="520"
-                step="10"
-                value={overlaySize}
-                onChange={(event) => setOverlaySize(Number(event.target.value))}
-              />
-            </label>
-            <p>
-              Choose an app or window in the macOS picker for the cleanest
-              capture.
-            </p>
-          </section>
-        )}
       </div>
+      {settingsOpen && (
+        <section
+          className="overlay-settings no-drag"
+          aria-label="Overlay settings"
+        >
+          <div className="overlay-settings-heading">
+            <strong>Recording settings</strong>
+            <span>
+              {systemAudioAvailable === false
+                ? "No system audio returned"
+                : "Ready"}
+            </span>
+          </div>
+          <label>
+            Camera
+            <select
+              value={cameraId}
+              onChange={(event) => void changeCamera(event.target.value)}
+            >
+              <option value="default">Default camera</option>
+              {cameras.map((camera) => (
+                <option key={camera.deviceId} value={camera.deviceId}>
+                  {camera.label || "Camera"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Microphone
+            <select
+              value={micId}
+              onChange={(event) => setMicId(event.target.value)}
+            >
+              <option value="default">Default microphone</option>
+              {audioInputs.map((microphone) => (
+                <option key={microphone.deviceId} value={microphone.deviceId}>
+                  {microphone.label || "Microphone"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Quality
+            <select
+              value={quality}
+              onChange={(event) => setQuality(event.target.value as Quality)}
+            >
+              {qualityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="overlay-shape-row">
+            <span>Recording mode</span>
+            <div>
+              <button
+                className={captureMode === "screen" ? "chosen" : ""}
+                onClick={() => setCaptureMode("screen")}
+              >
+                Screen
+              </button>
+              <button
+                className={captureMode === "camera" ? "chosen" : ""}
+                onClick={() => {
+                  setCaptureMode("camera");
+                  setSystemAudio(false);
+                }}
+              >
+                Camera only
+              </button>
+            </div>
+          </div>
+          <div className="overlay-switch-row">
+            <span>System audio</span>
+            <Toggle
+              checked={captureMode === "screen" && systemAudio}
+              onChange={setSystemAudio}
+              label="System audio"
+              disabled={captureMode === "camera"}
+            />
+          </div>
+          <div className="overlay-switch-row">
+            <span>Voice isolation</span>
+            <Toggle
+              checked={voiceIsolation}
+              onChange={setVoiceIsolation}
+              label="Voice isolation"
+            />
+          </div>
+          <div className="overlay-shape-row">
+            <span>Camera shape</span>
+            <div>
+              <button
+                className={shape === "circle" ? "chosen" : ""}
+                onClick={() => setShape("circle")}
+              >
+                Circle
+              </button>
+              <button
+                className={shape === "square" ? "chosen" : ""}
+                onClick={() => setShape("square")}
+              >
+                Square
+              </button>
+              <button
+                className={shape === "rectangle" ? "chosen" : ""}
+                onClick={() => setShape("rectangle")}
+              >
+                Rectangle
+              </button>
+            </div>
+          </div>
+          <label className="overlay-size-control">
+            Overlay size <b>{overlaySize}px</b>
+            <input
+              type="range"
+              min="160"
+              max="520"
+              step="10"
+              value={overlaySize}
+              onChange={(event) => setOverlaySize(Number(event.target.value))}
+            />
+          </label>
+          <p>
+            Choose an app or window in the macOS picker for the cleanest
+            capture.
+          </p>
+        </section>
+      )}
+      <button
+        className="overlay-dismiss no-drag"
+        onMouseEnter={handleCloseButtonEnter}
+        onClick={closeOverlay}
+        disabled={recording || finalizing}
+        aria-label="Close Capturely overlay"
+        title={
+          recording ? "Stop recording before closing" : "Close overlay (Esc)"
+        }
+      >
+        <Icon size={15}>
+          <path d="m7 7 10 10M17 7 7 17" />
+        </Icon>
+      </button>
       {notice && (
         <p className={`overlay-notice ${notice.type}`} role="status">
           {notice.message}

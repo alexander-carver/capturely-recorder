@@ -158,9 +158,9 @@ function openOverlay(cameraId = "default") {
     return;
   }
   overlayWindow = new BrowserWindow({
-    width: 288,
+    width: 354,
     height: 330,
-    minWidth: 318,
+    minWidth: 354,
     minHeight: 180,
     frame: false,
     transparent: true,
@@ -297,11 +297,11 @@ ipcMain.handle(
       shape === "rectangle" ? normalizedSize * (9 / 16) : normalizedSize;
     const display = screen.getDisplayMatching(overlayWindow.getBounds());
     const width = Math.min(
-      Math.max(Math.round(normalizedSize + 24), 318),
+      Math.max(Math.round(normalizedSize + 24), settingsOpen ? 356 : 354),
       display.workAreaSize.width - 20,
     );
     const height = Math.min(
-      Math.max(Math.round(cameraHeight + 92), settingsOpen ? 430 : 0),
+      Math.max(Math.round(cameraHeight + 92), settingsOpen ? 452 : 0),
       display.workAreaSize.height - 20,
     );
     const bounds = overlayWindow.getBounds();
