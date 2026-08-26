@@ -849,12 +849,21 @@ nav span {
 .desktop-overlay.is-settings-open {
   padding: 8px;
 }
+.desktop-overlay.is-camera-only-fullscreen {
+  display: block;
+  padding: 0;
+}
 .overlay-cluster {
   position: relative;
   display: grid;
   justify-items: center;
   gap: 11px;
   -webkit-app-region: no-drag;
+}
+.desktop-overlay.is-camera-only-fullscreen .overlay-cluster {
+  width: 100vw;
+  height: 100vh;
+  display: block;
 }
 .overlay-video {
   width: min(var(--overlay-size), calc(100vw - 24px));
@@ -886,6 +895,17 @@ nav span {
   display: block;
   object-fit: cover;
   transform: scaleX(-1);
+}
+.desktop-overlay.is-camera-only-fullscreen .overlay-video {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  cursor: default;
+}
+.desktop-overlay.is-camera-only-fullscreen .overlay-video:active {
+  cursor: default;
 }
 .overlay-video.off {
   background: linear-gradient(145deg, #263b62, #14213d);
@@ -958,6 +978,16 @@ nav span {
   pointer-events: auto;
   transform: translateY(0) scale(1);
   transition-delay: 0s;
+}
+.desktop-overlay.is-camera-only-fullscreen .overlay-dock {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: 34px;
+  transform: translate(-50%, 16px) scale(0.97);
+}
+.desktop-overlay.is-camera-only-fullscreen.is-controls-visible .overlay-dock {
+  transform: translate(-50%, 0) scale(1);
 }
 .overlay-record,
 .overlay-action,
@@ -1081,6 +1111,9 @@ nav span {
 .overlay-dismiss:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+.desktop-overlay.is-camera-only-fullscreen .overlay-dismiss {
+  display: none;
 }
 .overlay-settings .overlay-settings-heading {
   padding-right: 34px;

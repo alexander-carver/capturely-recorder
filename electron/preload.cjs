@@ -33,16 +33,19 @@ contextBridge.exposeInMainWorld("capturely", {
     closeOverlay: () => ipcRenderer.invoke("window:close-overlay"),
     hideOverlay: () => ipcRenderer.invoke("window:hide-overlay"),
     showOverlay: () => ipcRenderer.invoke("window:show-overlay"),
+    setCameraOnlyFullscreen: (fullscreen) =>
+      ipcRenderer.invoke("window:set-camera-only-fullscreen", fullscreen),
     showMain: () => ipcRenderer.invoke("window:show-main"),
     setOverlayInteractive: (interactive) =>
       ipcRenderer.invoke("window:set-overlay-interactive", interactive),
     moveOverlayBy: (deltaX, deltaY) =>
       ipcRenderer.invoke("window:move-overlay-by", { deltaX, deltaY }),
-    resizeOverlay: (size, shape, settingsOpen) =>
+    resizeOverlay: (size, shape, settingsOpen, fullscreen) =>
       ipcRenderer.invoke("window:resize-overlay", {
         size,
         shape,
         settingsOpen,
+        fullscreen,
       }),
   },
 });

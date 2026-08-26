@@ -39,6 +39,9 @@ declare global {
         closeOverlay: () => Promise<void>;
         hideOverlay: () => Promise<void>;
         showOverlay: () => Promise<void>;
+        setCameraOnlyFullscreen: (fullscreen: boolean) => Promise<{
+          fullscreen: boolean;
+        }>;
         showMain: () => Promise<void>;
         setOverlayInteractive: (interactive: boolean) => Promise<void>;
         moveOverlayBy: (deltaX: number, deltaY: number) => Promise<void>;
@@ -46,6 +49,7 @@ declare global {
           size: number,
           shape: "circle" | "square" | "rectangle",
           settingsOpen?: boolean,
+          fullscreen?: boolean,
         ) => Promise<void>;
       };
     };

@@ -442,6 +442,12 @@ ipcMain.handle("window:show-overlay", () => {
   overlayWindow?.showInactive();
   overlayWindow?.setAlwaysOnTop(true, "screen-saver");
 });
+ipcMain.handle("window:set-camera-only-fullscreen", (_event, fullscreen) => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayWindow.setFullScreen(Boolean(fullscreen));
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  return { fullscreen: overlayWindow.isFullScreen() };
+});
 ipcMain.handle("window:set-overlay-interactive", (_event, interactive) => {
   overlayWindow?.setIgnoreMouseEvents(!interactive, { forward: true });
   return { interactive: Boolean(interactive) };
@@ -456,8 +462,9 @@ ipcMain.handle("window:move-overlay-by", (_event, { deltaX, deltaY }) => {
 });
 ipcMain.handle(
   "window:resize-overlay",
-  (_event, { size, shape, settingsOpen }) => {
+  (_event, { size, shape, settingsOpen, fullscreen }) => {
     if (!overlayWindow || overlayWindow.isDestroyed()) return;
+    if (fullscreen) return overlayWindow.getBounds();
     const normalizedSize = Math.min(520, Math.max(160, Number(size) || 240));
     const cameraHeight =
       shape === "rectangle" ? normalizedSize * (9 / 16) : normalizedSize;

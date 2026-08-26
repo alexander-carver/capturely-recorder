@@ -169,16 +169,17 @@ function DesktopOverlay() {
   const [elapsed, setElapsed] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [cameraOnlyFullscreen, setCameraOnlyFullscreen] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
   const audioInputs = devices.filter((device) => device.kind === "audioinput");
   const cameras = devices.filter((device) => device.kind === "videoinput");
 
-  const selectCaptureMode = (nextMode: CaptureMode) => {
+  const selectCaptureMode = useCallback((nextMode: CaptureMode) => {
     captureModeRef.current = nextMode;
     setCaptureMode(nextMode);
     if (nextMode === "camera") setSystemAudio(false);
-  };
+  }, []);
 
   const stopStream = (stream: MediaStream | null) =>
     stream?.getTracks().forEach((track) => track.stop());
@@ -637,8 +638,16 @@ function DesktopOverlay() {
       overlaySize,
       shape,
       settingsOpen,
+      cameraOnlyFullscreen,
     );
-  }, [overlaySize, shape, settingsOpen]);
+  }, [cameraOnlyFullscreen, overlaySize, shape, settingsOpen]);
+  useEffect(() => {
+    void window.capturely?.window.setOverlayInteractive(cameraOnlyFullscreen);
+    return () => {
+      if (cameraOnlyFullscreen)
+        void window.capturely?.window.setCameraOnlyFullscreen(false);
+    };
+  }, [cameraOnlyFullscreen]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(
@@ -662,17 +671,39 @@ function DesktopOverlay() {
       setCameraError("That camera could not be started.");
     }
   };
+  const enterCameraOnlyFullscreen = useCallback(() => {
+    selectCaptureMode("camera");
+    setCameraVisible(true);
+    setSettingsOpen(false);
+    setControlsVisible(false);
+    setCameraOnlyFullscreen(true);
+    void window.capturely?.window.setCameraOnlyFullscreen(true);
+  }, [selectCaptureMode]);
+  const exitCameraOnlyFullscreen = useCallback(() => {
+    if (!recording) selectCaptureMode("screen");
+    setCameraOnlyFullscreen(false);
+    setControlsVisible(true);
+    void window.capturely?.window.setCameraOnlyFullscreen(false);
+  }, [recording, selectCaptureMode]);
   const closeOverlay = useCallback(() => {
+    if (cameraOnlyFullscreen) {
+      exitCameraOnlyFullscreen();
+      return;
+    }
     if (!recording && !finalizing) void window.capturely?.window.closeOverlay();
-  }, [finalizing, recording]);
+  }, [cameraOnlyFullscreen, exitCameraOnlyFullscreen, finalizing, recording]);
   const showControls = () => {
     setControlsVisible(true);
     void window.capturely?.window.setOverlayInteractive(true);
   };
   const hideControls = () => {
     setControlsVisible(false);
-    if (!overlayDragRef.current)
+    if (!cameraOnlyFullscreen && !overlayDragRef.current)
       void window.capturely?.window.setOverlayInteractive(false);
+  };
+  const handleFullscreenPointerMove = (event: PointerEvent<HTMLElement>) => {
+    if (event.clientY >= window.innerHeight - 140) showControls();
+    else hideControls();
   };
   const handleCloseButtonEnter = () => {
     showControls();
@@ -680,6 +711,10 @@ function DesktopOverlay() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (cameraOnlyFullscreen) {
+        exitCameraOnlyFullscreen();
+        return;
+      }
       if (settingsOpen) {
         setSettingsOpen(false);
         return;
@@ -688,8 +723,14 @@ function DesktopOverlay() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeOverlay, settingsOpen]);
+  }, [
+    cameraOnlyFullscreen,
+    closeOverlay,
+    exitCameraOnlyFullscreen,
+    settingsOpen,
+  ]);
   const startOverlayDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (cameraOnlyFullscreen) return;
     if (event.button !== 0) return;
     event.preventDefault();
     showControls();
@@ -701,6 +742,7 @@ function DesktopOverlay() {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const moveOverlay = (event: PointerEvent<HTMLDivElement>) => {
+    if (cameraOnlyFullscreen) return;
     const drag = overlayDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const deltaX = event.screenX - drag.screenX;
@@ -711,6 +753,7 @@ function DesktopOverlay() {
     drag.screenY = event.screenY;
   };
   const stopOverlayDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (cameraOnlyFullscreen) return;
     if (overlayDragRef.current?.pointerId !== event.pointerId) return;
     overlayDragRef.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -718,13 +761,16 @@ function DesktopOverlay() {
 
   return (
     <main
-      className={`desktop-overlay ${controlsVisible || settingsOpen ? "is-controls-visible" : ""} ${settingsOpen ? "is-settings-open" : ""}`}
+      className={`desktop-overlay ${controlsVisible || settingsOpen ? "is-controls-visible" : ""} ${settingsOpen ? "is-settings-open" : ""} ${cameraOnlyFullscreen ? "is-camera-only-fullscreen" : ""}`}
       style={{ "--overlay-size": `${overlaySize}px` } as CSSProperties}
+      onPointerMove={
+        cameraOnlyFullscreen ? handleFullscreenPointerMove : undefined
+      }
     >
       <div
         className="overlay-cluster"
-        onMouseEnter={showControls}
-        onMouseLeave={hideControls}
+        onMouseEnter={cameraOnlyFullscreen ? undefined : showControls}
+        onMouseLeave={cameraOnlyFullscreen ? undefined : hideControls}
       >
         <div
           className={`overlay-video ${shape} ${cameraVisible ? "" : "off"}`}
@@ -798,29 +844,29 @@ function DesktopOverlay() {
             </button>
           ) : (
             <button
-              className={`overlay-camera-only ${captureMode === "camera" ? "is-active" : ""}`}
+              className={`overlay-camera-only ${cameraOnlyFullscreen ? "is-active" : ""}`}
               onClick={() =>
-                selectCaptureMode(
-                  captureMode === "camera" ? "screen" : "camera",
-                )
+                cameraOnlyFullscreen
+                  ? exitCameraOnlyFullscreen()
+                  : enterCameraOnlyFullscreen()
               }
               disabled={finalizing}
               aria-label={
-                captureMode === "camera"
-                  ? "Just me mode selected. Switch back to screen recording"
-                  : "Select just me mode for a full-frame camera video"
+                cameraOnlyFullscreen
+                  ? "Exit full-screen camera view"
+                  : "Open full-screen camera view"
               }
               title={
-                captureMode === "camera"
-                  ? "Just me selected — press the red Record button when ready"
-                  : "Select a full-frame camera video, then press Record"
+                cameraOnlyFullscreen
+                  ? "Exit full-screen camera view"
+                  : "Open full-screen camera view"
               }
             >
               <Icon size={15}>
                 <rect x="3" y="6" width="13" height="12" rx="2" />
                 <path d="m16 10 5-3v10l-5-3" />
               </Icon>
-              <span>Just me</span>
+              <span>{cameraOnlyFullscreen ? "Exit view" : "Just me"}</span>
             </button>
           )}
           <span className="overlay-divider" />
@@ -877,10 +923,18 @@ function DesktopOverlay() {
           <button
             className="overlay-close"
             onClick={closeOverlay}
-            disabled={recording || finalizing}
-            aria-label="Close overlay"
+            disabled={finalizing || (!cameraOnlyFullscreen && recording)}
+            aria-label={
+              cameraOnlyFullscreen
+                ? "Exit full-screen camera view"
+                : "Close overlay"
+            }
             title={
-              recording ? "Stop recording before closing" : "Close overlay"
+              cameraOnlyFullscreen
+                ? "Exit full-screen camera view"
+                : recording
+                  ? "Stop recording before closing"
+                  : "Close overlay"
             }
           >
             <Icon size={16}>
