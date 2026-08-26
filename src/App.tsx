@@ -154,6 +154,7 @@ function DesktopOverlay() {
   const [shape, setShape] = useState<CameraShape>("circle");
   const [overlaySize, setOverlaySize] = useState(240);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("screen");
+  const captureModeRef = useRef<CaptureMode>("screen");
   const [cameraVisible, setCameraVisible] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [systemAudio, setSystemAudio] = useState(true);
@@ -172,6 +173,12 @@ function DesktopOverlay() {
   const [notice, setNotice] = useState<Notice>(null);
   const audioInputs = devices.filter((device) => device.kind === "audioinput");
   const cameras = devices.filter((device) => device.kind === "videoinput");
+
+  const selectCaptureMode = (nextMode: CaptureMode) => {
+    captureModeRef.current = nextMode;
+    setCaptureMode(nextMode);
+    if (nextMode === "camera") setSystemAudio(false);
+  };
 
   const stopStream = (stream: MediaStream | null) =>
     stream?.getTracks().forEach((track) => track.stop());
@@ -257,7 +264,7 @@ function DesktopOverlay() {
       context.fillStyle = "#0b1020";
       context.fillRect(0, 0, width, height);
       const camera = cameraVideoRef.current;
-      if (captureMode === "camera") {
+      if (captureModeRef.current === "camera") {
         if (!camera || camera.readyState < 2) {
           animationRef.current = requestAnimationFrame(drawComposite);
           return;
@@ -341,11 +348,11 @@ function DesktopOverlay() {
       }
       animationRef.current = requestAnimationFrame(drawComposite);
     },
-    [cameraVisible, captureMode, overlaySize, shape],
+    [cameraVisible, overlaySize, shape],
   );
-  const mixAudio = async () => {
+  const mixAudio = async (mode = captureModeRef.current) => {
     const wantsSystemAudio =
-      captureMode === "screen" &&
+      mode === "screen" &&
       systemAudio &&
       Boolean(screenStreamRef.current?.getAudioTracks().length);
     if (!micOn && !wantsSystemAudio) return new MediaStream();
@@ -405,13 +412,15 @@ function DesktopOverlay() {
     setFinalizing(true);
     recorder.stop();
   }, []);
-  const startRecording = async () => {
+  const startRecording = async (modeOverride?: CaptureMode) => {
     setNotice(null);
     setSettingsOpen(false);
+    const mode = modeOverride || captureModeRef.current;
+    selectCaptureMode(mode);
     try {
       let source: MediaTrackSettings | undefined;
       let display: MediaStream | null = null;
-      if (captureMode === "screen") {
+      if (mode === "screen") {
         // This call stays in the overlay's button handler so macOS can present its native picker.
         display = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: { ideal: 30, max: 60 } },
@@ -427,9 +436,13 @@ function DesktopOverlay() {
         setSystemAudioAvailable(display.getAudioTracks().length > 0);
         display.getVideoTracks()[0]?.addEventListener("ended", stopRecording);
       } else {
+        setCameraVisible(true);
         if (!cameraStreamRef.current) await startCamera();
         source = cameraStreamRef.current?.getVideoTracks()[0]?.getSettings();
         setSystemAudioAvailable(false);
+        cameraStreamRef.current
+          ?.getVideoTracks()[0]
+          ?.addEventListener("ended", stopRecording, { once: true });
       }
       const dimensions = chooseDimensions(
         source?.width || 1920,
@@ -440,11 +453,7 @@ function DesktopOverlay() {
         throw new Error("Recording canvas was unavailable.");
       canvasRef.current.width = dimensions.width;
       canvasRef.current.height = dimensions.height;
-      if (
-        captureMode === "screen" &&
-        cameraVisible &&
-        !cameraStreamRef.current
-      ) {
+      if (mode === "screen" && cameraVisible && !cameraStreamRef.current) {
         try {
           await startCamera();
         } catch {
@@ -456,14 +465,14 @@ function DesktopOverlay() {
       }
       let audioStream: MediaStream;
       try {
-        audioStream = await mixAudio();
+        audioStream = await mixAudio(mode);
       } catch (error) {
         stopStream(micStreamRef.current);
         micStreamRef.current = null;
         await audioContextRef.current?.close();
         audioContextRef.current = null;
         audioStream = new MediaStream(
-          captureMode === "screen" && systemAudio
+          mode === "screen" && systemAudio
             ? display?.getAudioTracks() || []
             : [],
         );
@@ -523,7 +532,10 @@ function DesktopOverlay() {
           if (sessionRef.current && window.capturely) {
             await window.capturely.recordings.finish({
               id: sessionRef.current,
-              title: "Overlay recording",
+              title:
+                mode === "camera"
+                  ? "Camera-only recording"
+                  : "Screen recording",
               duration: finalizedDurationRef.current || durationRef.current,
               ...dimensionsRef.current,
             });
@@ -571,7 +583,9 @@ function DesktopOverlay() {
         type: "error",
         message:
           error instanceof Error && error.name === "NotAllowedError"
-            ? "Screen sharing was cancelled or blocked."
+            ? mode === "camera"
+              ? "Camera access was cancelled or blocked."
+              : "Screen sharing was cancelled or blocked."
             : error instanceof Error
               ? error.message
               : "Capturely could not start this recording.",
@@ -760,23 +774,43 @@ function DesktopOverlay() {
               <span className="record-dot" />
             )}
           </button>
-          <button
-            className="overlay-action"
-            onClick={togglePause}
-            disabled={!recording || finalizing}
-            aria-label={paused ? "Resume recording" : "Pause recording"}
-            title={paused ? "Resume" : "Pause"}
-          >
-            {paused ? (
-              <Icon size={17}>
-                <path d="m8 5 10 7-10 7V5Z" fill="currentColor" stroke="none" />
+          {recording ? (
+            <button
+              className="overlay-action"
+              onClick={togglePause}
+              disabled={finalizing}
+              aria-label={paused ? "Resume recording" : "Pause recording"}
+              title={paused ? "Resume" : "Pause"}
+            >
+              {paused ? (
+                <Icon size={17}>
+                  <path
+                    d="m8 5 10 7-10 7V5Z"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                </Icon>
+              ) : (
+                <Icon size={17}>
+                  <path d="M8 5v14M16 5v14" />
+                </Icon>
+              )}
+            </button>
+          ) : (
+            <button
+              className="overlay-camera-only"
+              onClick={() => void startRecording("camera")}
+              disabled={finalizing}
+              aria-label="Record just me with the selected camera"
+              title="Record just your camera — no screen picker"
+            >
+              <Icon size={15}>
+                <rect x="3" y="6" width="13" height="12" rx="2" />
+                <path d="m16 10 5-3v10l-5-3" />
               </Icon>
-            ) : (
-              <Icon size={17}>
-                <path d="M8 5v14M16 5v14" />
-              </Icon>
-            )}
-          </button>
+              <span>Just me</span>
+            </button>
+          )}
           <span className="overlay-divider" />
           <button
             className={`overlay-action ${micOn ? "is-active" : ""}`}
@@ -802,26 +836,6 @@ function DesktopOverlay() {
               <path d="M3 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />
               <path d="m15 10 6-3v10l-6-3" />
               {!cameraVisible && <path d="m3 3 18 18" />}
-            </Icon>
-          </button>
-          <button
-            className={`overlay-action ${captureMode === "camera" ? "is-active" : ""}`}
-            onClick={() => {
-              const nextMode = captureMode === "camera" ? "screen" : "camera";
-              setCaptureMode(nextMode);
-              if (nextMode === "camera") setSystemAudio(false);
-            }}
-            disabled={recording || finalizing}
-            aria-label="Toggle camera-only recording"
-            title={
-              captureMode === "camera"
-                ? "Camera-only recording"
-                : "Switch to camera-only recording"
-            }
-          >
-            <Icon size={17}>
-              <rect x="3" y="6" width="13" height="12" rx="2" />
-              <path d="m16 10 5-3v10l-5-3" />
             </Icon>
           </button>
           <span className="overlay-divider" />
@@ -922,16 +936,13 @@ function DesktopOverlay() {
             <div>
               <button
                 className={captureMode === "screen" ? "chosen" : ""}
-                onClick={() => setCaptureMode("screen")}
+                onClick={() => selectCaptureMode("screen")}
               >
                 Screen
               </button>
               <button
                 className={captureMode === "camera" ? "chosen" : ""}
-                onClick={() => {
-                  setCaptureMode("camera");
-                  setSystemAudio(false);
-                }}
+                onClick={() => selectCaptureMode("camera")}
               >
                 Camera only
               </button>
