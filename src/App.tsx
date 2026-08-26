@@ -1071,6 +1071,7 @@ function RecorderApp() {
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState("idle");
 
   const isDesktop = Boolean(window.capturely);
   const audioInputs = devices.filter((device) => device.kind === "audioinput");
@@ -1112,6 +1113,23 @@ function RecorderApp() {
         cancelAnimationFrame(systemMeterAnimationRef.current);
     };
   }, [loadDevices, loadRecordings]);
+  useEffect(
+    () =>
+      window.capturely?.updates.onStatus(({ status, message }) => {
+        setUpdateStatus(status);
+        if (status === "ready")
+          setNotice({
+            type: "success",
+            message: "Update ready — restart to install.",
+          });
+        if (status === "error" && message)
+          setNotice({
+            type: "info",
+            message: "Update check will be available after the signed release.",
+          });
+      }),
+    [],
+  );
 
   const attachVideo = async (
     element: HTMLVideoElement | null,
@@ -1655,6 +1673,25 @@ function RecorderApp() {
           </button>
         </nav>
         <div className="header-actions">
+          {isDesktop && (
+            <button
+              className="update-button"
+              onClick={() => {
+                if (updateStatus === "ready") {
+                  void window.capturely?.updates.install();
+                  return;
+                }
+                setUpdateStatus("checking");
+                void window.capturely?.updates.check();
+              }}
+            >
+              {updateStatus === "ready"
+                ? "Restart to update"
+                : updateStatus === "checking" || updateStatus === "downloading"
+                  ? "Checking updates…"
+                  : "Check for updates"}
+            </button>
+          )}
           <span className="desktop-status">
             <i /> {isDesktop ? "Desktop app" : "Browser mode"}
           </span>

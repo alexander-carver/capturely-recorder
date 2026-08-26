@@ -27,6 +27,13 @@ declare global {
       recording: {
         onToggle: (callback: () => void) => () => void;
       };
+      updates: {
+        check: () => Promise<{ status: string }>;
+        install: () => Promise<void>;
+        onStatus: (
+          callback: (update: { status: string; message?: string }) => void,
+        ) => () => void;
+      };
       window: {
         openOverlay: (cameraId?: string) => Promise<void>;
         closeOverlay: () => Promise<void>;

@@ -1,7 +1,7 @@
 {
   "name": "capturely",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -14,6 +14,7 @@
     "package:mac": "npm run build && electron-builder --mac dmg"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
@@ -52,9 +53,17 @@
       "identity": null,
       "icon": "build/icon.icns",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.productivity"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alexander-carver",
+        "repo": "capturely-recorder"
+      }
+    ]
   }
 }

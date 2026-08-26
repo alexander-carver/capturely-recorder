@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld("capturely", {
       return () => ipcRenderer.removeListener("recording:toggle", listener);
     },
   },
+  updates: {
+    check: () => ipcRenderer.invoke("updates:check"),
+    install: () => ipcRenderer.invoke("updates:install"),
+    onStatus: (callback) => {
+      const listener = (_event, update) => callback(update);
+      ipcRenderer.on("updates:status", listener);
+      return () => ipcRenderer.removeListener("updates:status", listener);
+    },
+  },
   window: {
     openOverlay: (cameraId) =>
       ipcRenderer.invoke("window:open-overlay", cameraId),

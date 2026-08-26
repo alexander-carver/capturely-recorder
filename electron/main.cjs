@@ -12,6 +12,7 @@ const {
   Tray,
 } = require("electron");
 const { spawn } = require("node:child_process");
+const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const path = require("node:path");
@@ -124,6 +125,27 @@ function createTray() {
     ]),
   );
   tray.on("click", showOverlay);
+}
+
+function sendUpdateStatus(status, message = "") {
+  mainWindow?.webContents.send("updates:status", { status, message });
+}
+
+function configureAutoUpdates() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("checking-for-update", () => sendUpdateStatus("checking"));
+  autoUpdater.on("update-available", () => sendUpdateStatus("downloading"));
+  autoUpdater.on("update-not-available", () => sendUpdateStatus("current"));
+  autoUpdater.on("download-progress", (progress) =>
+    sendUpdateStatus("downloading", `${Math.round(progress.percent)}%`),
+  );
+  autoUpdater.on("update-downloaded", () => sendUpdateStatus("ready"));
+  autoUpdater.on("error", (error) =>
+    sendUpdateStatus("error", error.message || "Update check failed."),
+  );
+  setTimeout(() => void autoUpdater.checkForUpdates(), 5_000);
 }
 
 function runFfmpeg(args) {
@@ -283,6 +305,7 @@ app.whenReady().then(() => {
   );
   createMainWindow();
   createTray();
+  configureAutoUpdates();
   globalShortcut.register("CommandOrControl+Shift+R", sendRecordingToggle);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -296,6 +319,14 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("recordings:list", readRecords);
+ipcMain.handle("updates:check", async () => {
+  if (!app.isPackaged) return { status: "unavailable" };
+  await autoUpdater.checkForUpdates();
+  return { status: "checking" };
+});
+ipcMain.handle("updates:install", () => {
+  autoUpdater.quitAndInstall();
+});
 ipcMain.handle("recordings:begin", async (_event, { mimeType }) => {
   await fsp.mkdir(recordingsDir(), { recursive: true });
   const id = crypto.randomUUID().replaceAll("-", "");

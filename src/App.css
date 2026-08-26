@@ -82,6 +82,19 @@ nav span {
   align-items: center;
   gap: 18px;
 }
+.update-button {
+  border: 1px solid #dce3ec;
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: #45536c;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.update-button:hover {
+  border-color: #e74348;
+  color: #c63238;
+}
 .setup-guide {
   max-width: 1480px;
   margin: 14px auto 0;
