@@ -5,6 +5,7 @@ declare global {
     capturely?: {
       recordings: {
         list: () => Promise<RecordingItem[]>;
+        thumbnail: (id: string) => Promise<string | null>;
         begin: (details: {
           mimeType: string;
         }) => Promise<{ id: string; fileName: string }>;
@@ -65,5 +66,6 @@ declare global {
     height: number;
     bytes: number;
     createdAt: string;
+    thumbnailPath?: string;
   }
 }

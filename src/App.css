@@ -311,6 +311,9 @@ nav span {
   height: 100%;
   object-fit: cover;
   display: block;
+  transform: none;
+}
+.camera-overlay video.mirrored {
   transform: scaleX(-1);
 }
 .camera-placeholder {
@@ -741,6 +744,13 @@ nav span {
   place-items: center;
   color: #fff;
   background: #14213d;
+  overflow: hidden;
+}
+.recording-thumb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 .recording-info {
   min-width: 0;
@@ -894,6 +904,9 @@ nav span {
   height: 100%;
   display: block;
   object-fit: cover;
+  transform: none;
+}
+.overlay-video video.mirrored {
   transform: scaleX(-1);
 }
 .desktop-overlay.is-camera-only-fullscreen .overlay-video {

@@ -164,6 +164,39 @@ function runFfmpeg(args) {
   });
 }
 
+function thumbnailPathFor(id) {
+  return path.join(recordingsDir(), `${id}.jpg`);
+}
+
+async function createThumbnail(record, outputPath = thumbnailPathFor(record.id)) {
+  const timestamp = Math.max(0, Math.min(1, Number(record.duration) / 2 || 0));
+  await runFfmpeg([
+    "-y",
+    "-ss",
+    String(timestamp),
+    "-i",
+    record.path,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=320:-2",
+    "-q:v",
+    "3",
+    outputPath,
+  ]);
+  record.thumbnailPath = outputPath;
+  return outputPath;
+}
+
+async function ensureThumbnail(record) {
+  const outputPath = record.thumbnailPath || thumbnailPathFor(record.id);
+  if (!isCapturelyRecording(outputPath))
+    throw new Error("Recording thumbnail was not found.");
+  if (!fs.existsSync(outputPath)) await createThumbnail(record, outputPath);
+  else record.thumbnailPath = outputPath;
+  return outputPath;
+}
+
 function ensureShareServer() {
   if (shareServer) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -363,12 +396,31 @@ ipcMain.handle(
       createdAt: new Date().toISOString(),
       bytes: write.bytes,
     };
+    try {
+      await createThumbnail(record);
+    } catch (error) {
+      console.warn("Capturely thumbnail generation failed:", error.message);
+    }
     const records = await readRecords();
     records.unshift(record);
     await saveRecords(records);
     return record;
   },
 );
+ipcMain.handle("recordings:thumbnail", async (_event, id) => {
+  const records = await readRecords();
+  const record = records.find((item) => item.id === id);
+  if (!record || !isCapturelyRecording(record.path)) return null;
+  try {
+    const thumbnailPath = await ensureThumbnail(record);
+    await saveRecords(records);
+    const image = await fsp.readFile(thumbnailPath);
+    return `data:image/jpeg;base64,${image.toString("base64")}`;
+  } catch (error) {
+    console.warn("Capturely thumbnail unavailable:", error.message);
+    return null;
+  }
+});
 ipcMain.handle("recordings:open-folder", async (_event, id) => {
   const record = await getRecord(id);
   if (!record || !isCapturelyRecording(record.path))
@@ -428,6 +480,11 @@ ipcMain.handle("recordings:export-mp4", async (_event, { id, start, end }) => {
     createdAt: new Date().toISOString(),
     bytes: (await fsp.stat(filePath)).size,
   };
+  try {
+    await createThumbnail(exported);
+  } catch (error) {
+    console.warn("Capturely thumbnail generation failed:", error.message);
+  }
   const records = await readRecords();
   records.unshift(exported);
   await saveRecords(records);

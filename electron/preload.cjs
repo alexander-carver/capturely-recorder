@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("capturely", {
   recordings: {
     list: () => ipcRenderer.invoke("recordings:list"),
+    thumbnail: (id) => ipcRenderer.invoke("recordings:thumbnail", id),
     begin: (details) => ipcRenderer.invoke("recordings:begin", details),
     append: (details) => ipcRenderer.invoke("recordings:append", details),
     finish: (details) => ipcRenderer.invoke("recordings:finish", details),

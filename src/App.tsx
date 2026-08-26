@@ -112,6 +112,32 @@ function Toggle({
   );
 }
 
+function RecordingThumbnail({ item }: { item: RecordingItem }) {
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.capturely?.recordings.thumbnail(item.id).then((dataUrl) => {
+      if (!cancelled) setThumbnail(dataUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id]);
+
+  return (
+    <div className="recording-thumb">
+      {thumbnail ? (
+        <img src={thumbnail} alt={`Preview of ${item.title}`} />
+      ) : (
+        <Icon size={22}>
+          <path d="M8 5v14l11-7z" />
+        </Icon>
+      )}
+    </div>
+  );
+}
+
 function Logo() {
   return (
     <div className="brand">
@@ -162,6 +188,7 @@ function DesktopOverlay() {
     boolean | null
   >(null);
   const [voiceIsolation, setVoiceIsolation] = useState(true);
+  const [mirrorCamera, setMirrorCamera] = useState(false);
   const [quality, setQuality] = useState<Quality>("native");
   const [recording, setRecording] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -270,7 +297,15 @@ function DesktopOverlay() {
           animationRef.current = requestAnimationFrame(drawComposite);
           return;
         }
-        context.drawImage(camera, 0, 0, width, height);
+        if (mirrorCamera) {
+          context.save();
+          context.translate(width, 0);
+          context.scale(-1, 1);
+          context.drawImage(camera, 0, 0, width, height);
+          context.restore();
+        } else {
+          context.drawImage(camera, 0, 0, width, height);
+        }
         animationRef.current = requestAnimationFrame(drawComposite);
         return;
       }
@@ -320,9 +355,13 @@ function DesktopOverlay() {
             overlayWidth * 0.075,
           );
         context.clip();
-        context.translate(x + overlayWidth, y);
-        context.scale(-1, 1);
-        context.drawImage(camera, 0, 0, overlayWidth, overlayHeight);
+        if (mirrorCamera) {
+          context.translate(x + overlayWidth, y);
+          context.scale(-1, 1);
+          context.drawImage(camera, 0, 0, overlayWidth, overlayHeight);
+        } else {
+          context.drawImage(camera, x, y, overlayWidth, overlayHeight);
+        }
         context.restore();
         context.strokeStyle = "rgba(255,255,255,.88)";
         context.lineWidth = Math.max(1, width / 1920);
@@ -349,7 +388,7 @@ function DesktopOverlay() {
       }
       animationRef.current = requestAnimationFrame(drawComposite);
     },
-    [cameraVisible, overlaySize, shape],
+    [cameraVisible, mirrorCamera, overlaySize, shape],
   );
   const mixAudio = async (mode = captureModeRef.current) => {
     const wantsSystemAudio =
@@ -780,7 +819,13 @@ function DesktopOverlay() {
           onPointerCancel={stopOverlayDrag}
         >
           {cameraVisible && !cameraError ? (
-            <video ref={cameraVideoRef} muted playsInline autoPlay />
+            <video
+              ref={cameraVideoRef}
+              className={mirrorCamera ? "mirrored" : ""}
+              muted
+              playsInline
+              autoPlay
+            />
           ) : (
             <div className="overlay-camera-message">
               <Icon size={20}>
@@ -1031,6 +1076,15 @@ function DesktopOverlay() {
               label="Voice isolation"
             />
           </div>
+          <div className="overlay-switch-row">
+            <span>Mirror camera</span>
+            <Toggle
+              checked={mirrorCamera}
+              onChange={setMirrorCamera}
+              label="Mirror camera"
+              disabled={recording || finalizing}
+            />
+          </div>
           <div className="overlay-shape-row">
             <span>Camera shape</span>
             <div>
@@ -1066,8 +1120,8 @@ function DesktopOverlay() {
             />
           </label>
           <p>
-            Choose an app or window in the macOS picker for the cleanest
-            capture.
+            Mirror is off by default. Your preview and saved video always
+            match.
           </p>
         </section>
       )}
@@ -1130,6 +1184,7 @@ function RecorderApp() {
     boolean | null
   >(null);
   const [voiceIsolation, setVoiceIsolation] = useState(true);
+  const [mirrorCamera, setMirrorCamera] = useState(false);
   const [shape, setShape] = useState<CameraShape>("circle");
   const [cameraSize, setCameraSize] = useState(18);
   const [cameraPosition, setCameraPosition] = useState({ x: 75, y: 69 });
@@ -1149,6 +1204,9 @@ function RecorderApp() {
   const [trimEnd, setTrimEnd] = useState(0);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState("idle");
+  const [activeView, setActiveView] = useState<"recorder" | "library">(
+    "recorder",
+  );
 
   const isDesktop = Boolean(window.capturely);
   const audioInputs = devices.filter((device) => device.kind === "audioinput");
@@ -1314,7 +1372,13 @@ function RecorderApp() {
             overlayWidth * 0.07,
           );
         context.clip();
-        context.drawImage(camera, x, y, overlayWidth, overlayHeight);
+        if (mirrorCamera) {
+          context.translate(x + overlayWidth, y);
+          context.scale(-1, 1);
+          context.drawImage(camera, 0, 0, overlayWidth, overlayHeight);
+        } else {
+          context.drawImage(camera, x, y, overlayWidth, overlayHeight);
+        }
         context.restore();
         context.strokeStyle = "rgba(255,255,255,.75)";
         context.lineWidth = Math.max(2, width / 960);
@@ -1341,7 +1405,7 @@ function RecorderApp() {
       }
       animationRef.current = requestAnimationFrame(drawComposite);
     },
-    [cameraOn, cameraPosition, cameraSize, shape],
+    [cameraOn, cameraPosition, cameraSize, mirrorCamera, shape],
   );
 
   const clearPreview = () => {
@@ -1739,13 +1803,37 @@ function RecorderApp() {
     }
   };
 
+  const openLibrary = () => {
+    setActiveView("library");
+    void loadRecordings();
+    window.requestAnimationFrame(() =>
+      document.getElementById("recordings-library")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      }),
+    );
+  };
+
   return (
     <main className="app-shell">
       <header className="app-header">
         <Logo />
         <nav>
-          <button className="active">Recorder</button>
-          <button>
+          <button
+            className={activeView === "recorder" ? "active" : ""}
+            aria-current={activeView === "recorder" ? "page" : undefined}
+            onClick={() => {
+              setActiveView("recorder");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            Recorder
+          </button>
+          <button
+            className={activeView === "library" ? "active" : ""}
+            aria-current={activeView === "library" ? "page" : undefined}
+            onClick={openLibrary}
+          >
             Library <span>{recordings.length}</span>
           </button>
         </nav>
@@ -1877,7 +1965,13 @@ function RecorderApp() {
                   event.currentTarget.releasePointerCapture?.(event.pointerId);
                 }}
               >
-                <video ref={cameraVideoRef} muted playsInline autoPlay />
+                <video
+                  ref={cameraVideoRef}
+                  className={mirrorCamera ? "mirrored" : ""}
+                  muted
+                  playsInline
+                  autoPlay
+                />
                 {!cameraReady && (
                   <div className="camera-placeholder">
                     <Icon>
@@ -2052,6 +2146,18 @@ function RecorderApp() {
                 disabled={recording}
               />
             </div>
+            <div className="control-line mirror-camera-control">
+              <div>
+                <strong>Mirror camera</strong>
+                <small>Preview and saved footage stay identical.</small>
+              </div>
+              <Toggle
+                checked={mirrorCamera}
+                onChange={setMirrorCamera}
+                label="Mirror camera"
+                disabled={recording}
+              />
+            </div>
             <div className="segment-row">
               <button
                 className={shape === "circle" ? "selected" : ""}
@@ -2199,10 +2305,13 @@ function RecorderApp() {
           </button>
         </div>
       )}
-      <section className="library">
+      <section
+        id="recordings-library"
+        className={`library ${activeView === "library" ? "is-active-view" : ""}`}
+      >
         <div className="library-title">
           <div>
-            <h2>Recent recordings</h2>
+            <h2>{activeView === "library" ? "Library" : "Recent recordings"}</h2>
             <p>
               Your files remain private on this device until you share a local
               link.
@@ -2218,13 +2327,9 @@ function RecorderApp() {
         </div>
         {recordings.length ? (
           <div className="recording-list">
-            {recordings.slice(0, 4).map((item) => (
+            {(activeView === "library" ? recordings : recordings.slice(0, 4)).map((item) => (
               <article key={item.id} className="recording-row">
-                <div className="recording-thumb">
-                  <Icon size={22}>
-                    <path d="M8 5v14l11-7z" />
-                  </Icon>
-                </div>
+                <RecordingThumbnail item={item} />
                 <div className="recording-info">
                   <h3>{item.title}</h3>
                   <p>
