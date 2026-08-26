@@ -798,11 +798,23 @@ function DesktopOverlay() {
             </button>
           ) : (
             <button
-              className="overlay-camera-only"
-              onClick={() => void startRecording("camera")}
+              className={`overlay-camera-only ${captureMode === "camera" ? "is-active" : ""}`}
+              onClick={() =>
+                selectCaptureMode(
+                  captureMode === "camera" ? "screen" : "camera",
+                )
+              }
               disabled={finalizing}
-              aria-label="Record just me with the selected camera"
-              title="Record just your camera — no screen picker"
+              aria-label={
+                captureMode === "camera"
+                  ? "Just me mode selected. Switch back to screen recording"
+                  : "Select just me mode for a full-frame camera video"
+              }
+              title={
+                captureMode === "camera"
+                  ? "Just me selected — press the red Record button when ready"
+                  : "Select a full-frame camera video, then press Record"
+              }
             >
               <Icon size={15}>
                 <rect x="3" y="6" width="13" height="12" rx="2" />

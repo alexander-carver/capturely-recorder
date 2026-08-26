@@ -1005,6 +1005,11 @@ nav span {
 .overlay-camera-only span {
   white-space: nowrap;
 }
+.overlay-camera-only.is-active,
+.overlay-camera-only.is-active:hover:not(:disabled) {
+  background: #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.28);
+}
 .overlay-record {
   width: 37px;
   height: 37px;
