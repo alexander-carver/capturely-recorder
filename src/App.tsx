@@ -1036,6 +1036,7 @@ function RecorderApp() {
   const durationRef = useRef(0);
   const dimensionsRef = useRef({ width: 1920, height: 1080 });
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const cameraDragRef = useRef<number | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState("default");
   const [cameraId, setCameraId] = useState("default");
@@ -1582,6 +1583,7 @@ function RecorderApp() {
     }
   };
   const dragCamera = (event: PointerEvent<HTMLDivElement>) => {
+    if (cameraDragRef.current !== event.pointerId) return;
     const stage = event.currentTarget.parentElement;
     if (!stage || recording) return;
     const box = stage.getBoundingClientRect();
@@ -1746,9 +1748,20 @@ function RecorderApp() {
                           .height) *
                       100,
                   };
+                  cameraDragRef.current = event.pointerId;
                   event.currentTarget.setPointerCapture(event.pointerId);
                 }}
                 onPointerMove={dragCamera}
+                onPointerUp={(event) => {
+                  if (cameraDragRef.current !== event.pointerId) return;
+                  cameraDragRef.current = null;
+                  event.currentTarget.releasePointerCapture?.(event.pointerId);
+                }}
+                onPointerCancel={(event) => {
+                  if (cameraDragRef.current !== event.pointerId) return;
+                  cameraDragRef.current = null;
+                  event.currentTarget.releasePointerCapture?.(event.pointerId);
+                }}
               >
                 <video ref={cameraVideoRef} muted playsInline autoPlay />
                 {!cameraReady && (

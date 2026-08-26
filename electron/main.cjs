@@ -4,9 +4,12 @@ const {
   clipboard,
   globalShortcut,
   ipcMain,
+  Menu,
+  nativeImage,
   screen,
   shell,
   session,
+  Tray,
 } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -27,6 +30,7 @@ const ffmpegPath = app.isPackaged
 
 let mainWindow;
 let overlayWindow;
+let tray;
 let shareServer;
 let sharePort;
 const activeWrites = new Map();
@@ -80,6 +84,46 @@ function sendRecordingToggle() {
   const target =
     overlayWindow && !overlayWindow.isDestroyed() ? overlayWindow : mainWindow;
   target?.webContents.send("recording:toggle");
+}
+
+function showRecorder() {
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function showOverlay() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    openOverlay();
+    return;
+  }
+  overlayWindow.showInactive();
+  overlayWindow.focus();
+}
+
+function createTray() {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, "trayTemplate.png")
+    : path.join(__dirname, "../build/trayTemplate.png");
+  const icon = nativeImage.createFromPath(iconPath);
+  icon.setTemplateImage(true);
+  tray = new Tray(icon.resize({ width: 18, height: 18 }));
+  tray.setToolTip("Capturely — open recorder overlay");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open camera overlay", click: showOverlay },
+      { label: "Open Capturely", click: showRecorder },
+      { type: "separator" },
+      {
+        label: "Start / stop recording",
+        accelerator: "CommandOrControl+Shift+R",
+        click: sendRecordingToggle,
+      },
+      { type: "separator" },
+      { label: "Quit Capturely", click: () => app.quit() },
+    ]),
+  );
+  tray.on("click", showOverlay);
 }
 
 function runFfmpeg(args) {
@@ -238,6 +282,7 @@ app.whenReady().then(() => {
     { useSystemPicker: macOSSystemPickerAvailable },
   );
   createMainWindow();
+  createTray();
   globalShortcut.register("CommandOrControl+Shift+R", sendRecordingToggle);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

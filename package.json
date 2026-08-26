@@ -1,7 +1,7 @@
 {
   "name": "capturely",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -41,6 +41,12 @@
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/trayTemplate.png",
+        "to": "trayTemplate.png"
+      }
     ],
     "mac": {
       "identity": null,
