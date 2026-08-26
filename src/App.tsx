@@ -145,6 +145,7 @@ function DesktopOverlay() {
     screenX: number;
     screenY: number;
   } | null>(null);
+  const overlayHiddenForDisplayRef = useRef(false);
   const requestedCamera =
     new URLSearchParams(window.location.search).get("cameraId") || "default";
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -238,6 +239,10 @@ function DesktopOverlay() {
     if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
     void audioContextRef.current?.close();
     audioContextRef.current = null;
+    if (overlayHiddenForDisplayRef.current) {
+      overlayHiddenForDisplayRef.current = false;
+      void window.capturely?.window.showOverlay();
+    }
   }, []);
   const drawComposite = useCallback(
     function drawComposite() {
@@ -312,7 +317,7 @@ function DesktopOverlay() {
         context.drawImage(camera, 0, 0, overlayWidth, overlayHeight);
         context.restore();
         context.strokeStyle = "rgba(255,255,255,.88)";
-        context.lineWidth = Math.max(2, width / 960);
+        context.lineWidth = Math.max(1, width / 1920);
         context.beginPath();
         if (shape === "circle")
           context.ellipse(
@@ -415,6 +420,10 @@ function DesktopOverlay() {
         screenStreamRef.current = display;
         await attachVideo(screenVideoRef.current, display);
         source = display.getVideoTracks()[0]?.getSettings();
+        if (source?.displaySurface === "monitor") {
+          overlayHiddenForDisplayRef.current = true;
+          await window.capturely?.window.hideOverlay();
+        }
         setSystemAudioAvailable(display.getAudioTracks().length > 0);
         display.getVideoTracks()[0]?.addEventListener("ended", stopRecording);
       } else {
@@ -624,6 +633,13 @@ function DesktopOverlay() {
     );
     return () => window.clearTimeout(timer);
   }, [notice]);
+  useEffect(
+    () =>
+      window.capturely?.recording.onToggle(() => {
+        document.querySelector<HTMLButtonElement>(".overlay-record")?.click();
+      }),
+    [],
+  );
   const changeCamera = async (nextCameraId: string) => {
     setCameraId(nextCameraId);
     try {
@@ -1015,6 +1031,8 @@ function RecorderApp() {
   const writeChainRef = useRef(Promise.resolve());
   const sessionRef = useRef<string | null>(null);
   const animationRef = useRef<number | null>(null);
+  const meterAnimationRef = useRef<number | null>(null);
+  const systemMeterAnimationRef = useRef<number | null>(null);
   const durationRef = useRef(0);
   const dimensionsRef = useRef({ width: 1920, height: 1080 });
   const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -1043,6 +1061,15 @@ function RecorderApp() {
   const [notice, setNotice] = useState<Notice>(null);
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
   const [title, setTitle] = useState("Course lesson");
+  const [micLevel, setMicLevel] = useState(0);
+  const [systemLevel, setSystemLevel] = useState(0);
+  const [showSetup, setShowSetup] = useState(
+    () => localStorage.getItem("capturely-setup-complete") !== "true",
+  );
+  const [trimEditorId, setTrimEditorId] = useState<string | null>(null);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   const isDesktop = Boolean(window.capturely);
   const audioInputs = devices.filter((device) => device.kind === "audioinput");
@@ -1078,6 +1105,10 @@ function RecorderApp() {
       stopStream(micStreamRef.current);
       void audioContextRef.current?.close();
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (meterAnimationRef.current)
+        cancelAnimationFrame(meterAnimationRef.current);
+      if (systemMeterAnimationRef.current)
+        cancelAnimationFrame(systemMeterAnimationRef.current);
     };
   }, [loadDevices, loadRecordings]);
 
@@ -1154,7 +1185,8 @@ function RecorderApp() {
       const camera = cameraVideoRef.current;
       if (cameraOn && camera && camera.readyState >= 2) {
         const overlayWidth = width * (cameraSize / 100);
-        const overlayHeight = overlayWidth * 0.75;
+        const overlayHeight =
+          shape === "rectangle" ? overlayWidth * (9 / 16) : overlayWidth;
         const x = clamp(
           (cameraPosition.x / 100) * width,
           0,
@@ -1288,12 +1320,27 @@ function RecorderApp() {
     audioContextRef.current = context;
     await context.resume();
     const destination = context.createMediaStreamDestination();
-    if (wantsScreenAudio && screenStreamRef.current)
-      context
-        .createMediaStreamSource(
-          new MediaStream(screenStreamRef.current.getAudioTracks()),
-        )
-        .connect(destination);
+    if (wantsScreenAudio && screenStreamRef.current) {
+      const source = context.createMediaStreamSource(
+        new MediaStream(screenStreamRef.current.getAudioTracks()),
+      );
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      source.connect(destination);
+      const samples = new Uint8Array(analyser.fftSize);
+      const sampleLevel = () => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) {
+          const level = (sample - 128) / 128;
+          sum += level * level;
+        }
+        setSystemLevel(Math.min(1, Math.sqrt(sum / samples.length) * 3.2));
+        systemMeterAnimationRef.current = requestAnimationFrame(sampleLevel);
+      };
+      sampleLevel();
+    }
     if (micOn) {
       const selectedMic = micId === "default" ? undefined : { exact: micId };
       const microphone = await navigator.mediaDevices.getUserMedia({
@@ -1313,6 +1360,31 @@ function RecorderApp() {
         );
       }
       const source = context.createMediaStreamSource(microphone);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      const sampleLevel = () => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) {
+          const level = (sample - 128) / 128;
+          sum += level * level;
+        }
+        setMicLevel(Math.min(1, Math.sqrt(sum / samples.length) * 3.2));
+        meterAnimationRef.current = requestAnimationFrame(sampleLevel);
+      };
+      sampleLevel();
+      microphone.getAudioTracks()[0]?.addEventListener("ended", () => {
+        if (recorderRef.current?.state === "recording") {
+          setNotice({
+            type: "error",
+            message:
+              "Your microphone disconnected. Recording was stopped safely.",
+          });
+          void finishRecording();
+        }
+      });
       if (voiceIsolation) {
         const highPass = context.createBiquadFilter();
         highPass.type = "highpass";
@@ -1391,6 +1463,14 @@ function RecorderApp() {
         let completed: RecordingItem | null = null;
         try {
           if (animationRef.current) cancelAnimationFrame(animationRef.current);
+          if (meterAnimationRef.current)
+            cancelAnimationFrame(meterAnimationRef.current);
+          if (systemMeterAnimationRef.current)
+            cancelAnimationFrame(systemMeterAnimationRef.current);
+          meterAnimationRef.current = null;
+          systemMeterAnimationRef.current = null;
+          setMicLevel(0);
+          setSystemLevel(0);
           await writeChainRef.current;
           const duration = durationRef.current;
           if (sessionRef.current && window.capturely) {
@@ -1449,6 +1529,14 @@ function RecorderApp() {
       drawComposite();
     } catch (error) {
       stopStream(micStreamRef.current);
+      if (meterAnimationRef.current)
+        cancelAnimationFrame(meterAnimationRef.current);
+      if (systemMeterAnimationRef.current)
+        cancelAnimationFrame(systemMeterAnimationRef.current);
+      meterAnimationRef.current = null;
+      systemMeterAnimationRef.current = null;
+      setMicLevel(0);
+      setSystemLevel(0);
       await audioContextRef.current?.close();
       audioContextRef.current = null;
       setNotice({
@@ -1467,6 +1555,13 @@ function RecorderApp() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [recording]);
+  useEffect(
+    () =>
+      window.capturely?.recording.onToggle(() => {
+        document.querySelector<HTMLButtonElement>(".record-button")?.click();
+      }),
+    [],
+  );
   const toggleCameraPreview = async () => {
     if (cameraOn) {
       setCameraOn(false);
@@ -1501,7 +1596,7 @@ function RecorderApp() {
         ((event.clientY - box.top) / box.height) * 100 -
           dragOffsetRef.current.y,
         0,
-        100 - cameraSize * 0.75,
+        100 - (shape === "rectangle" ? cameraSize * (9 / 16) : cameraSize),
       ),
     });
   };
@@ -1515,6 +1610,36 @@ function RecorderApp() {
     }
     const link = await window.capturely.recordings.shareLink(item.id);
     setNotice({ type: "success", message: `Share link copied: ${link}` });
+  };
+  const dismissSetup = () => {
+    localStorage.setItem("capturely-setup-complete", "true");
+    setShowSetup(false);
+  };
+  const exportMp4 = async (item: RecordingItem) => {
+    if (!window.capturely) return;
+    const start = clamp(trimStart, 0, item.duration);
+    const end = clamp(trimEnd || item.duration, start + 0.1, item.duration);
+    setExportingId(item.id);
+    try {
+      const exported = await window.capturely.recordings.exportMp4({
+        id: item.id,
+        start,
+        end,
+      });
+      setRecordings((items) => [exported, ...items]);
+      setTrimEditorId(null);
+      setNotice({
+        type: "success",
+        message: "Trimmed MP4 saved to Movies/Capturely.",
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "MP4 export failed.",
+      });
+    } finally {
+      setExportingId(null);
+    }
   };
 
   return (
@@ -1540,6 +1665,19 @@ function RecorderApp() {
           </button>
         </div>
       </header>
+      {showSetup && (
+        <section className="setup-guide" aria-label="Quick setup">
+          <div>
+            <strong>Ready in three steps</strong>
+            <span>
+              1. Allow Camera & Microphone. 2. Choose Screen. 3. Press Record.
+            </span>
+          </div>
+          <kbd>⌘ ⇧ R</kbd>
+          <span className="setup-shortcut">Record / stop from anywhere</span>
+          <button onClick={dismissSetup}>Got it</button>
+        </section>
+      )}
       <section className="workspace">
         <div className="capture-area">
           <div className="source-tabs">
@@ -1652,6 +1790,13 @@ function RecorderApp() {
                   </option>
                 ))}
               </select>
+              <span className="audio-meter" title="Live microphone level">
+                <i
+                  style={{
+                    transform: `scaleX(${micOn ? Math.max(0.03, micLevel) : 0})`,
+                  }}
+                />
+              </span>
             </label>
             <label className="device-control camera-control">
               <span>
@@ -1700,6 +1845,16 @@ function RecorderApp() {
                 label="Capture system audio"
                 disabled={recording}
               />
+              <span
+                className="audio-meter compact"
+                title="Live system-audio level"
+              >
+                <i
+                  style={{
+                    transform: `scaleX(${systemAudio ? Math.max(0.03, systemLevel) : 0})`,
+                  }}
+                />
+              </span>
             </div>
             <div className="quick-toggle">
               <span>
@@ -1790,6 +1945,16 @@ function RecorderApp() {
                   <rect x="6" y="6" width="12" height="12" rx="2" />
                 </Icon>
                 Square
+              </button>
+              <button
+                className={shape === "rectangle" ? "selected" : ""}
+                onClick={() => setShape("rectangle")}
+                disabled={recording}
+              >
+                <Icon size={16}>
+                  <rect x="4" y="7" width="16" height="10" rx="2" />
+                </Icon>
+                Rectangle
               </button>
             </div>
             <label className="range-label">
@@ -1884,6 +2049,9 @@ function RecorderApp() {
               </>
             )}
           </button>
+          <div className="shortcut-hint">
+            <kbd>⌘ ⇧ R</kbd> Start or stop recording from anywhere
+          </div>
         </aside>
       </section>
       {notice && (
@@ -1953,6 +2121,52 @@ function RecorderApp() {
                   </Icon>
                   Copy share link
                 </button>
+                <button
+                  className="mp4-button"
+                  disabled={!isDesktop || exportingId === item.id}
+                  onClick={() => {
+                    setTrimEditorId((current) =>
+                      current === item.id ? null : item.id,
+                    );
+                    setTrimStart(0);
+                    setTrimEnd(item.duration);
+                  }}
+                >
+                  {exportingId === item.id ? "Exporting…" : "Trim & MP4"}
+                </button>
+                {trimEditorId === item.id && (
+                  <div className="trim-editor">
+                    <label>
+                      Start{" "}
+                      <input
+                        type="number"
+                        min="0"
+                        max={item.duration}
+                        step="0.1"
+                        value={trimStart}
+                        onChange={(event) =>
+                          setTrimStart(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    <label>
+                      End{" "}
+                      <input
+                        type="number"
+                        min="0.1"
+                        max={item.duration}
+                        step="0.1"
+                        value={trimEnd}
+                        onChange={(event) =>
+                          setTrimEnd(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    <button onClick={() => void exportMp4(item)}>
+                      Export MP4
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>

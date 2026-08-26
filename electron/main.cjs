@@ -2,17 +2,28 @@ const {
   app,
   BrowserWindow,
   clipboard,
+  globalShortcut,
   ipcMain,
   screen,
   shell,
   session,
 } = require("electron");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const path = require("node:path");
 const http = require("node:http");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const ffmpegPath = app.isPackaged
+  ? path.join(
+      process.resourcesPath,
+      "app.asar.unpacked",
+      "node_modules",
+      "ffmpeg-static",
+      "ffmpeg",
+    )
+  : require("ffmpeg-static");
 
 let mainWindow;
 let overlayWindow;
@@ -63,6 +74,28 @@ function escapeHtml(value) {
 function isCapturelyRecording(filePath) {
   const root = `${path.resolve(recordingsDir())}${path.sep}`;
   return path.resolve(filePath).startsWith(root);
+}
+
+function sendRecordingToggle() {
+  const target =
+    overlayWindow && !overlayWindow.isDestroyed() ? overlayWindow : mainWindow;
+  target?.webContents.send("recording:toggle");
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    const process = spawn(ffmpegPath, args, { windowsHide: true });
+    let stderr = "";
+    process.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    process.on("error", reject);
+    process.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(stderr || "MP4 export failed.")),
+    );
+  });
 }
 
 function ensureShareServer() {
@@ -205,10 +238,13 @@ app.whenReady().then(() => {
     { useSystemPicker: macOSSystemPickerAvailable },
   );
   createMainWindow();
+  globalShortcut.register("CommandOrControl+Shift+R", sendRecordingToggle);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
+
+app.on("will-quit", () => globalShortcut.unregisterAll());
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -272,10 +308,64 @@ ipcMain.handle("recordings:share-link", async (_event, id) => {
   clipboard.writeText(link);
   return link;
 });
+ipcMain.handle("recordings:export-mp4", async (_event, { id, start, end }) => {
+  const record = await getRecord(id);
+  if (!record || !isCapturelyRecording(record.path))
+    throw new Error("Recording was not found.");
+  const startSeconds = Math.max(0, Number(start) || 0);
+  const requestedEnd = Number(end);
+  const endSeconds = Number.isFinite(requestedEnd)
+    ? Math.max(startSeconds, requestedEnd)
+    : record.duration;
+  const duration = Math.max(0.1, endSeconds - startSeconds);
+  const idSuffix = crypto.randomUUID().replaceAll("-", "");
+  const fileName = `${path.parse(record.fileName).name}-trimmed.mp4`;
+  const filePath = path.join(recordingsDir(), `${idSuffix}.mp4`);
+  await runFfmpeg([
+    "-y",
+    "-ss",
+    String(startSeconds),
+    "-i",
+    record.path,
+    "-t",
+    String(duration),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
+    filePath,
+  ]);
+  const exported = {
+    id: idSuffix,
+    fileName,
+    path: filePath,
+    title: `${record.title} (MP4)`,
+    duration,
+    width: record.width,
+    height: record.height,
+    createdAt: new Date().toISOString(),
+    bytes: (await fsp.stat(filePath)).size,
+  };
+  const records = await readRecords();
+  records.unshift(exported);
+  await saveRecords(records);
+  return exported;
+});
 ipcMain.handle("window:open-overlay", (_event, cameraId) =>
   openOverlay(cameraId),
 );
 ipcMain.handle("window:close-overlay", () => overlayWindow?.close());
+ipcMain.handle("window:hide-overlay", () => overlayWindow?.hide());
+ipcMain.handle("window:show-overlay", () => {
+  overlayWindow?.showInactive();
+  overlayWindow?.setAlwaysOnTop(true, "screen-saver");
+});
 ipcMain.handle("window:set-overlay-interactive", (_event, interactive) => {
   overlayWindow?.setIgnoreMouseEvents(!interactive, { forward: true });
   return { interactive: Boolean(interactive) };

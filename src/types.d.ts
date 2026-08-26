@@ -18,10 +18,20 @@ declare global {
         }) => Promise<RecordingItem>;
         openFolder: (id: string) => Promise<void>;
         shareLink: (id: string) => Promise<string>;
+        exportMp4: (details: {
+          id: string;
+          start: number;
+          end: number;
+        }) => Promise<RecordingItem>;
+      };
+      recording: {
+        onToggle: (callback: () => void) => () => void;
       };
       window: {
         openOverlay: (cameraId?: string) => Promise<void>;
         closeOverlay: () => Promise<void>;
+        hideOverlay: () => Promise<void>;
+        showOverlay: () => Promise<void>;
         showMain: () => Promise<void>;
         setOverlayInteractive: (interactive: boolean) => Promise<void>;
         moveOverlayBy: (deltaX: number, deltaY: number) => Promise<void>;
