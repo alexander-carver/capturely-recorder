@@ -104,11 +104,11 @@ function showOverlay() {
 
 function createTray() {
   const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, "trayTemplate.png")
-    : path.join(__dirname, "../build/trayTemplate.png");
+    ? path.join(process.resourcesPath, "trayIcon.png")
+    : path.join(__dirname, "../build/trayIcon.png");
   const icon = nativeImage.createFromPath(iconPath);
-  icon.setTemplateImage(true);
-  tray = new Tray(icon.resize({ width: 18, height: 18 }));
+  icon.setTemplateImage(false);
+  tray = new Tray(icon.resize({ width: 23, height: 23 }));
   tray.setToolTip("Capturely — open recorder overlay");
   tray.setContextMenu(
     Menu.buildFromTemplate([
