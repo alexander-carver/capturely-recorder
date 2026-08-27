@@ -742,12 +742,23 @@ function DesktopOverlay() {
     void window.capturely?.window.setCameraOnlyFullscreen(false);
   }, [recording, selectCaptureMode]);
   const closeOverlay = useCallback(() => {
+    if (settingsOpen) {
+      setSettingsOpen(false);
+      setControlsVisible(true);
+      return;
+    }
     if (cameraOnlyFullscreen) {
       exitCameraOnlyFullscreen();
       return;
     }
     if (!recording && !finalizing) void window.capturely?.window.closeOverlay();
-  }, [cameraOnlyFullscreen, exitCameraOnlyFullscreen, finalizing, recording]);
+  }, [
+    cameraOnlyFullscreen,
+    exitCameraOnlyFullscreen,
+    finalizing,
+    recording,
+    settingsOpen,
+  ]);
   const showControls = () => {
     setControlsVisible(true);
     void window.capturely?.window.setOverlayInteractive(true);
@@ -1031,6 +1042,19 @@ function DesktopOverlay() {
                 : "Ready"}
             </span>
           </div>
+          <button
+            className="overlay-settings-close"
+            onClick={() => {
+              setSettingsOpen(false);
+              setControlsVisible(true);
+            }}
+            aria-label="Close settings"
+            title="Close settings"
+          >
+            <Icon size={15}>
+              <path d="m7 7 10 10M17 7 7 17" />
+            </Icon>
+          </button>
           <label>
             Camera
             <select
@@ -1160,9 +1184,13 @@ function DesktopOverlay() {
         onMouseEnter={handleCloseButtonEnter}
         onClick={closeOverlay}
         disabled={recording || finalizing}
-        aria-label="Close Capturely overlay"
+        aria-label={settingsOpen ? "Close settings" : "Close Capturely overlay"}
         title={
-          recording ? "Stop recording before closing" : "Close overlay (Esc)"
+          settingsOpen
+            ? "Close settings"
+            : recording
+              ? "Stop recording before closing"
+              : "Close overlay (Esc)"
         }
       >
         <Icon size={15}>

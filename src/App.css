@@ -1162,8 +1162,27 @@ nav span {
 .desktop-overlay.is-camera-only-fullscreen .overlay-dismiss {
   display: none;
 }
+.desktop-overlay.is-settings-open .overlay-dismiss {
+  display: none;
+}
 .overlay-settings .overlay-settings-heading {
   padding-right: 34px;
+}
+.overlay-settings-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.overlay-settings-close:hover {
+  background: #ef4444;
 }
 .overlay-settings-heading,
 .overlay-switch-row,
