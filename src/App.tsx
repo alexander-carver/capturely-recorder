@@ -163,6 +163,7 @@ function DesktopOverlay() {
   const animationRef = useRef<number | null>(null);
   const writeChainRef = useRef(Promise.resolve());
   const sessionRef = useRef<string | null>(null);
+  const discardRequestedRef = useRef(false);
   const durationRef = useRef(0);
   const finalizedDurationRef = useRef(0);
   const dimensionsRef = useRef({ width: 1920, height: 1080 });
@@ -452,9 +453,20 @@ function DesktopOverlay() {
     setFinalizing(true);
     recorder.stop();
   }, []);
+  const discardRecording = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    discardRequestedRef.current = true;
+    setRecording(false);
+    setPaused(false);
+    setElapsed(0);
+    setFinalizing(true);
+    recorder.stop();
+  }, []);
   const startRecording = async (modeOverride?: CaptureMode) => {
     setNotice(null);
     setSettingsOpen(false);
+    discardRequestedRef.current = false;
     const mode = modeOverride || captureModeRef.current;
     selectCaptureMode(mode);
     try {
@@ -569,7 +581,11 @@ function DesktopOverlay() {
       recorder.onstop = async () => {
         try {
           await writeChainRef.current;
-          if (sessionRef.current && window.capturely) {
+          if (discardRequestedRef.current) {
+            if (sessionRef.current && window.capturely)
+              await window.capturely.recordings.discard(sessionRef.current);
+            setNotice({ type: "success", message: "Recording discarded." });
+          } else if (sessionRef.current && window.capturely) {
             await window.capturely.recordings.finish({
               id: sessionRef.current,
               title:
@@ -602,6 +618,7 @@ function DesktopOverlay() {
           });
         } finally {
           sessionRef.current = null;
+          discardRequestedRef.current = false;
           durationRef.current = 0;
           finalizedDurationRef.current = 0;
           setElapsed(0);
@@ -866,27 +883,40 @@ function DesktopOverlay() {
             )}
           </button>
           {recording ? (
-            <button
-              className="overlay-action"
-              onClick={togglePause}
-              disabled={finalizing}
-              aria-label={paused ? "Resume recording" : "Pause recording"}
-              title={paused ? "Resume" : "Pause"}
-            >
-              {paused ? (
-                <Icon size={17}>
-                  <path
-                    d="m8 5 10 7-10 7V5Z"
-                    fill="currentColor"
-                    stroke="none"
-                  />
+            <>
+              <button
+                className="overlay-action"
+                onClick={togglePause}
+                disabled={finalizing}
+                aria-label={paused ? "Resume recording" : "Pause recording"}
+                title={paused ? "Resume" : "Pause"}
+              >
+                {paused ? (
+                  <Icon size={17}>
+                    <path
+                      d="m8 5 10 7-10 7V5Z"
+                      fill="currentColor"
+                      stroke="none"
+                    />
+                  </Icon>
+                ) : (
+                  <Icon size={17}>
+                    <path d="M8 5v14M16 5v14" />
+                  </Icon>
+                )}
+              </button>
+              <button
+                className="overlay-discard"
+                onClick={discardRecording}
+                disabled={finalizing}
+                aria-label="Discard recording"
+                title="Discard recording — cannot be undone"
+              >
+                <Icon size={16}>
+                  <path d="M5 7h14M10 11v6M14 11v6M9 7l1-3h4l1 3M7 7l1 14h8l1-14" />
                 </Icon>
-              ) : (
-                <Icon size={17}>
-                  <path d="M8 5v14M16 5v14" />
-                </Icon>
-              )}
-            </button>
+              </button>
+            </>
           ) : (
             <button
               className={`overlay-camera-only ${cameraOnlyFullscreen ? "is-active" : ""}`}
@@ -1161,6 +1191,7 @@ function RecorderApp() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const writeChainRef = useRef(Promise.resolve());
   const sessionRef = useRef<string | null>(null);
+  const discardRequestedRef = useRef(false);
   const animationRef = useRef<number | null>(null);
   const meterAnimationRef = useRef<number | null>(null);
   const systemMeterAnimationRef = useRef<number | null>(null);
@@ -1190,6 +1221,8 @@ function RecorderApp() {
   const [cameraPosition, setCameraPosition] = useState({ x: 75, y: 69 });
   const [quality, setQuality] = useState<Quality>("native");
   const [recording, setRecording] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
@@ -1417,7 +1450,19 @@ function RecorderApp() {
   };
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (!recorder || recorder.state === "inactive") return;
+    setFinalizing(true);
+    setRecording(false);
+    recorder.stop();
+  }, []);
+  const discardRecording = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    discardRequestedRef.current = true;
+    setDiscarding(true);
+    setRecording(false);
+    setElapsed(0);
+    recorder.stop();
   }, []);
   const startPreview = async () => {
     setNotice(null);
@@ -1567,11 +1612,13 @@ function RecorderApp() {
   };
 
   const startRecording = async () => {
+    if (discarding || finalizing) return;
     if (!screenReady) {
       await startPreview();
       return;
     }
     setNotice(null);
+    discardRequestedRef.current = false;
     try {
       const canvas = canvasRef.current;
       if (!canvas) throw new Error("Recording canvas was unavailable.");
@@ -1633,7 +1680,11 @@ function RecorderApp() {
           setSystemLevel(0);
           await writeChainRef.current;
           const duration = durationRef.current;
-          if (sessionRef.current && window.capturely) {
+          if (discardRequestedRef.current) {
+            if (sessionRef.current && window.capturely)
+              await window.capturely.recordings.discard(sessionRef.current);
+            setNotice({ type: "success", message: "Recording discarded." });
+          } else if (sessionRef.current && window.capturely) {
             completed = await window.capturely.recordings.finish({
               id: sessionRef.current,
               title,
@@ -1669,6 +1720,9 @@ function RecorderApp() {
           });
         } finally {
           sessionRef.current = null;
+          discardRequestedRef.current = false;
+          setDiscarding(false);
+          setFinalizing(false);
           setRecording(false);
           setElapsed(0);
           durationRef.current = 0;
@@ -1685,6 +1739,7 @@ function RecorderApp() {
       recorder.start(4_000);
       durationRef.current = 0;
       setElapsed(0);
+      setFinalizing(false);
       setRecording(true);
       drawComposite();
     } catch (error) {
@@ -2269,6 +2324,7 @@ function RecorderApp() {
           <button
             className={`record-button ${recording ? "stop" : ""}`}
             onClick={recording ? finishRecording : startRecording}
+            disabled={discarding || finalizing}
           >
             {recording ? (
               <>
@@ -2282,6 +2338,18 @@ function RecorderApp() {
               </>
             )}
           </button>
+          {recording && (
+            <button
+              className="discard-recording"
+              onClick={discardRecording}
+              disabled={discarding}
+            >
+              <Icon size={15}>
+                <path d="M5 7h14M10 11v6M14 11v6M9 7l1-3h4l1 3M7 7l1 14h8l1-14" />
+              </Icon>
+              Discard take
+            </button>
+          )}
           <div className="shortcut-hint">
             <kbd>⌘ ⇧ R</kbd> Start or stop recording from anywhere
           </div>

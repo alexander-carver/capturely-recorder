@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("capturely", {
     thumbnail: (id) => ipcRenderer.invoke("recordings:thumbnail", id),
     begin: (details) => ipcRenderer.invoke("recordings:begin", details),
     append: (details) => ipcRenderer.invoke("recordings:append", details),
+    discard: (id) => ipcRenderer.invoke("recordings:discard", id),
     finish: (details) => ipcRenderer.invoke("recordings:finish", details),
     openFolder: (id) => ipcRenderer.invoke("recordings:open-folder", id),
     shareLink: (id) => ipcRenderer.invoke("recordings:share-link", id),

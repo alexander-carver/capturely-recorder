@@ -379,6 +379,17 @@ ipcMain.handle("recordings:append", async (_event, { id, data }) => {
   await fsp.appendFile(write.filePath, buffer);
   write.bytes += buffer.length;
 });
+ipcMain.handle("recordings:discard", async (_event, id) => {
+  const write = activeWrites.get(id);
+  if (!write || !isCapturelyRecording(write.filePath)) return false;
+  activeWrites.delete(id);
+  try {
+    await fsp.unlink(write.filePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return true;
+});
 ipcMain.handle(
   "recordings:finish",
   async (_event, { id, title, duration, width, height }) => {

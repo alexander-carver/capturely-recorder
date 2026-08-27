@@ -10,6 +10,7 @@ declare global {
           mimeType: string;
         }) => Promise<{ id: string; fileName: string }>;
         append: (details: { id: string; data: ArrayBuffer }) => Promise<void>;
+        discard: (id: string) => Promise<boolean>;
         finish: (details: {
           id: string;
           title: string;

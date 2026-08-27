@@ -629,6 +629,31 @@ nav span {
 .record-button.stop:hover {
   background: #0c1428;
 }
+.discard-recording {
+  width: 100%;
+  margin-top: 8px;
+  min-height: 34px;
+  border: 1px solid #f0cacc;
+  border-radius: 8px;
+  color: #c94045;
+  background: #fff8f8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.discard-recording:hover:not(:disabled) {
+  color: #fff;
+  border-color: #dc3f44;
+  background: #dc3f44;
+}
+.discard-recording:disabled,
+.record-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .record-button em {
   margin-left: auto;
   margin-right: 12px;
@@ -1005,7 +1030,8 @@ nav span {
 .overlay-record,
 .overlay-action,
 .overlay-close,
-.overlay-camera-only {
+.overlay-camera-only,
+.overlay-discard {
   width: 33px;
   height: 33px;
   flex: 0 0 auto;
@@ -1022,7 +1048,8 @@ nav span {
 }
 .overlay-action:hover:not(:disabled),
 .overlay-close:hover:not(:disabled),
-.overlay-camera-only:hover:not(:disabled) {
+.overlay-camera-only:hover:not(:disabled),
+.overlay-discard:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.14);
 }
 .overlay-action.is-active {
@@ -1052,6 +1079,13 @@ nav span {
 .overlay-camera-only.is-active:hover:not(:disabled) {
   background: #ef4444;
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.28);
+}
+.overlay-discard {
+  color: #ff9da0;
+}
+.overlay-discard:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(239, 68, 68, 0.9);
 }
 .overlay-record {
   width: 37px;
