@@ -698,12 +698,17 @@ function DesktopOverlay() {
     );
   }, [cameraOnlyFullscreen, overlaySize, shape, settingsOpen]);
   useEffect(() => {
-    void window.capturely?.window.setOverlayInteractive(cameraOnlyFullscreen);
+    // A settings panel must always retain mouse input. The transparent overlay
+    // otherwise becomes click-through when the pointer briefly leaves while
+    // the native window is being resized.
+    void window.capturely?.window.setOverlayInteractive(
+      cameraOnlyFullscreen || settingsOpen,
+    );
     return () => {
       if (cameraOnlyFullscreen)
         void window.capturely?.window.setCameraOnlyFullscreen(false);
     };
-  }, [cameraOnlyFullscreen]);
+  }, [cameraOnlyFullscreen, settingsOpen]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(
@@ -741,10 +746,19 @@ function DesktopOverlay() {
     setControlsVisible(true);
     void window.capturely?.window.setCameraOnlyFullscreen(false);
   }, [recording, selectCaptureMode]);
+  const openSettings = useCallback(() => {
+    setControlsVisible(true);
+    void window.capturely?.window.setOverlayInteractive(true);
+    setSettingsOpen(true);
+  }, []);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setControlsVisible(true);
+    void window.capturely?.window.setOverlayInteractive(true);
+  }, []);
   const closeOverlay = useCallback(() => {
     if (settingsOpen) {
-      setSettingsOpen(false);
-      setControlsVisible(true);
+      closeSettings();
       return;
     }
     if (cameraOnlyFullscreen) {
@@ -754,6 +768,7 @@ function DesktopOverlay() {
     if (!recording && !finalizing) void window.capturely?.window.closeOverlay();
   }, [
     cameraOnlyFullscreen,
+    closeSettings,
     exitCameraOnlyFullscreen,
     finalizing,
     recording,
@@ -764,6 +779,11 @@ function DesktopOverlay() {
     void window.capturely?.window.setOverlayInteractive(true);
   };
   const hideControls = () => {
+    if (settingsOpen) {
+      setControlsVisible(true);
+      void window.capturely?.window.setOverlayInteractive(true);
+      return;
+    }
     setControlsVisible(false);
     if (!cameraOnlyFullscreen && !overlayDragRef.current)
       void window.capturely?.window.setOverlayInteractive(false);
@@ -783,7 +803,7 @@ function DesktopOverlay() {
         return;
       }
       if (settingsOpen) {
-        setSettingsOpen(false);
+        closeSettings();
         return;
       }
       closeOverlay();
@@ -793,6 +813,7 @@ function DesktopOverlay() {
   }, [
     cameraOnlyFullscreen,
     closeOverlay,
+    closeSettings,
     exitCameraOnlyFullscreen,
     settingsOpen,
   ]);
@@ -985,7 +1006,7 @@ function DesktopOverlay() {
           <span className="overlay-divider" />
           <button
             className={`overlay-action ${settingsOpen ? "is-active" : ""}`}
-            onClick={() => setSettingsOpen((open) => !open)}
+            onClick={settingsOpen ? closeSettings : openSettings}
             disabled={recording || finalizing}
             aria-label="Recording settings"
             title="Recording settings"
@@ -1044,10 +1065,7 @@ function DesktopOverlay() {
           </div>
           <button
             className="overlay-settings-close"
-            onClick={() => {
-              setSettingsOpen(false);
-              setControlsVisible(true);
-            }}
+            onClick={closeSettings}
             aria-label="Close settings"
             title="Close settings"
           >
