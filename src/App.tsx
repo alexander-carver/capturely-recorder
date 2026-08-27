@@ -67,6 +67,11 @@ const dateText = (date: string) =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(date));
+const findBlackHoleInput = (devices: MediaDeviceInfo[]) =>
+  devices.find(
+    (device) =>
+      device.kind === "audioinput" && /blackhole/i.test(device.label),
+  );
 
 function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
   return (
@@ -158,6 +163,7 @@ function DesktopOverlay() {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const desktopAudioStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -270,8 +276,10 @@ function DesktopOverlay() {
     animationRef.current = null;
     stopStream(screenStreamRef.current);
     stopStream(micStreamRef.current);
+    stopStream(desktopAudioStreamRef.current);
     screenStreamRef.current = null;
     micStreamRef.current = null;
+    desktopAudioStreamRef.current = null;
     if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
     void audioContextRef.current?.close();
     audioContextRef.current = null;
@@ -392,21 +400,47 @@ function DesktopOverlay() {
     [cameraVisible, mirrorCamera, overlaySize, shape],
   );
   const mixAudio = async (mode = captureModeRef.current) => {
-    const wantsSystemAudio =
+    const hasNativeSystemAudio =
       mode === "screen" &&
       systemAudio &&
       Boolean(screenStreamRef.current?.getAudioTracks().length);
+    const fallbackDevice =
+      mode === "screen" && systemAudio && !hasNativeSystemAudio
+        ? findBlackHoleInput(await navigator.mediaDevices.enumerateDevices())
+        : undefined;
+    const wantsSystemAudio = hasNativeSystemAudio || Boolean(fallbackDevice);
     if (!micOn && !wantsSystemAudio) return new MediaStream();
     const context = new AudioContext();
     audioContextRef.current = context;
     await context.resume();
     const destination = context.createMediaStreamDestination();
-    if (wantsSystemAudio && screenStreamRef.current) {
+    if (hasNativeSystemAudio && screenStreamRef.current) {
       context
         .createMediaStreamSource(
           new MediaStream(screenStreamRef.current.getAudioTracks()),
         )
         .connect(destination);
+    }
+    if (fallbackDevice) {
+      try {
+        const desktopAudio = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: fallbackDevice.deviceId },
+            channelCount: 2,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+          video: false,
+        });
+        if (desktopAudio.getAudioTracks().length) {
+          desktopAudioStreamRef.current = desktopAudio;
+          context.createMediaStreamSource(desktopAudio).connect(destination);
+          setSystemAudioAvailable(true);
+        } else stopStream(desktopAudio);
+      } catch {
+        setSystemAudioAvailable(false);
+      }
     }
     if (micOn) {
       const deviceId = micId === "default" ? undefined : { exact: micId };
@@ -520,7 +554,9 @@ function DesktopOverlay() {
         audioStream = await mixAudio(mode);
       } catch (error) {
         stopStream(micStreamRef.current);
+        stopStream(desktopAudioStreamRef.current);
         micStreamRef.current = null;
+        desktopAudioStreamRef.current = null;
         await audioContextRef.current?.close();
         audioContextRef.current = null;
         audioStream = new MediaStream(
@@ -1233,6 +1269,7 @@ function RecorderApp() {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const desktopAudioStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const writeChainRef = useRef(Promise.resolve());
@@ -1319,6 +1356,7 @@ function RecorderApp() {
       stopStream(screenStreamRef.current);
       stopStream(cameraStreamRef.current);
       stopStream(micStreamRef.current);
+      stopStream(desktopAudioStreamRef.current);
       void audioContextRef.current?.close();
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       if (meterAnimationRef.current)
@@ -1564,16 +1602,21 @@ function RecorderApp() {
   };
 
   const mixAudio = async () => {
-    const wantsScreenAudio =
+    const hasNativeSystemAudio =
       systemAudio && Boolean(screenStreamRef.current?.getAudioTracks().length);
+    const fallbackDevice =
+      systemAudio && !hasNativeSystemAudio
+        ? findBlackHoleInput(await navigator.mediaDevices.enumerateDevices())
+        : undefined;
+    const wantsScreenAudio = hasNativeSystemAudio || Boolean(fallbackDevice);
     if (!micOn && !wantsScreenAudio) return new MediaStream();
     const context = new AudioContext();
     audioContextRef.current = context;
     await context.resume();
     const destination = context.createMediaStreamDestination();
-    if (wantsScreenAudio && screenStreamRef.current) {
+    const connectSystemAudio = (stream: MediaStream) => {
       const source = context.createMediaStreamSource(
-        new MediaStream(screenStreamRef.current.getAudioTracks()),
+        new MediaStream(stream.getAudioTracks()),
       );
       const analyser = context.createAnalyser();
       analyser.fftSize = 512;
@@ -1591,6 +1634,29 @@ function RecorderApp() {
         systemMeterAnimationRef.current = requestAnimationFrame(sampleLevel);
       };
       sampleLevel();
+    };
+    if (hasNativeSystemAudio && screenStreamRef.current)
+      connectSystemAudio(screenStreamRef.current);
+    if (fallbackDevice) {
+      try {
+        const desktopAudio = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: fallbackDevice.deviceId },
+            channelCount: 2,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+          video: false,
+        });
+        if (desktopAudio.getAudioTracks().length) {
+          desktopAudioStreamRef.current = desktopAudio;
+          connectSystemAudio(desktopAudio);
+          setSystemAudioAvailable(true);
+        } else stopStream(desktopAudio);
+      } catch {
+        setSystemAudioAvailable(false);
+      }
     }
     if (micOn) {
       const selectedMic = micId === "default" ? undefined : { exact: micId };
@@ -1773,7 +1839,9 @@ function RecorderApp() {
           setElapsed(0);
           durationRef.current = 0;
           stopStream(micStreamRef.current);
+          stopStream(desktopAudioStreamRef.current);
           micStreamRef.current = null;
+          desktopAudioStreamRef.current = null;
           await audioContextRef.current?.close();
           audioContextRef.current = null;
           clearPreview();
@@ -1790,6 +1858,8 @@ function RecorderApp() {
       drawComposite();
     } catch (error) {
       stopStream(micStreamRef.current);
+      stopStream(desktopAudioStreamRef.current);
+      desktopAudioStreamRef.current = null;
       if (meterAnimationRef.current)
         cancelAnimationFrame(meterAnimationRef.current);
       if (systemMeterAnimationRef.current)
@@ -2357,7 +2427,9 @@ function RecorderApp() {
             </Icon>
             <span>
               {systemAudioAvailable === false && systemAudio
-                ? "The selected source did not provide system audio."
+                ? findBlackHoleInput(audioInputs)
+                  ? "Native share audio is unavailable — BlackHole will capture desktop audio when you record."
+                  : "The selected source did not provide system audio."
                 : systemAudio && micOn
                   ? "System audio and mic will be mixed as separate capture sources."
                   : systemAudio
