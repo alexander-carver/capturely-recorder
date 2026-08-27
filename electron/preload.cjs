@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("capturely", {
     finish: (details) => ipcRenderer.invoke("recordings:finish", details),
     openFolder: (id) => ipcRenderer.invoke("recordings:open-folder", id),
     shareLink: (id) => ipcRenderer.invoke("recordings:share-link", id),
+    mediaUrl: (id) => ipcRenderer.invoke("recordings:media-url", id),
     exportMp4: (details) =>
       ipcRenderer.invoke("recordings:export-mp4", details),
   },

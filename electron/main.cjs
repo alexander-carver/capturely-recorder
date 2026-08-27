@@ -447,6 +447,13 @@ ipcMain.handle("recordings:share-link", async (_event, id) => {
   clipboard.writeText(link);
   return link;
 });
+ipcMain.handle("recordings:media-url", async (_event, id) => {
+  const record = await getRecord(id);
+  if (!record || !isCapturelyRecording(record.path))
+    throw new Error("Recording was not found.");
+  await ensureShareServer();
+  return `http://127.0.0.1:${sharePort}/media/${id}`;
+});
 ipcMain.handle("recordings:export-mp4", async (_event, { id, start, end }) => {
   const record = await getRecord(id);
   if (!record || !isCapturelyRecording(record.path))

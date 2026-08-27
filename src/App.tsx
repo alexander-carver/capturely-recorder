@@ -195,7 +195,7 @@ function DesktopOverlay() {
     boolean | null
   >(null);
   const [voiceIsolation, setVoiceIsolation] = useState(true);
-  const [mirrorCamera, setMirrorCamera] = useState(false);
+  const [mirrorCamera, setMirrorCamera] = useState(true);
   const [quality, setQuality] = useState<Quality>("native");
   const [recording, setRecording] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -1298,7 +1298,7 @@ function RecorderApp() {
     boolean | null
   >(null);
   const [voiceIsolation, setVoiceIsolation] = useState(true);
-  const [mirrorCamera, setMirrorCamera] = useState(false);
+  const [mirrorCamera, setMirrorCamera] = useState(true);
   const [shape, setShape] = useState<CameraShape>("circle");
   const [cameraSize, setCameraSize] = useState(18);
   const [cameraPosition, setCameraPosition] = useState({ x: 75, y: 69 });
@@ -1318,6 +1318,7 @@ function RecorderApp() {
   const [trimEditorId, setTrimEditorId] = useState<string | null>(null);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
+  const [trimVideoUrl, setTrimVideoUrl] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState("idle");
   const [activeView, setActiveView] = useState<"recorder" | "library">(
@@ -1947,6 +1948,27 @@ function RecorderApp() {
     localStorage.setItem("capturely-setup-complete", "true");
     setShowSetup(false);
   };
+  const closeTrimEditor = () => {
+    setTrimEditorId(null);
+    setTrimVideoUrl(null);
+  };
+  const openTrimEditor = async (item: RecordingItem) => {
+    if (!window.capturely) return;
+    setTrimEditorId(item.id);
+    setTrimStart(0);
+    setTrimEnd(item.duration);
+    setTrimVideoUrl(null);
+    try {
+      setTrimVideoUrl(await window.capturely.recordings.mediaUrl(item.id));
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Could not open this video.",
+      });
+      closeTrimEditor();
+    }
+  };
   const exportMp4 = async (item: RecordingItem) => {
     if (!window.capturely) return;
     const start = clamp(trimStart, 0, item.duration);
@@ -1959,7 +1981,7 @@ function RecorderApp() {
         end,
       });
       setRecordings((items) => [exported, ...items]);
-      setTrimEditorId(null);
+      closeTrimEditor();
       setNotice({
         type: "success",
         message: "Trimmed MP4 saved to Movies/Capturely.",
@@ -1984,6 +2006,9 @@ function RecorderApp() {
       }),
     );
   };
+  const trimItem = trimEditorId
+    ? recordings.find((item) => item.id === trimEditorId) || null
+    : null;
 
   return (
     <main className="app-shell">
@@ -2542,49 +2567,10 @@ function RecorderApp() {
                 <button
                   className="mp4-button"
                   disabled={!isDesktop || exportingId === item.id}
-                  onClick={() => {
-                    setTrimEditorId((current) =>
-                      current === item.id ? null : item.id,
-                    );
-                    setTrimStart(0);
-                    setTrimEnd(item.duration);
-                  }}
+                  onClick={() => void openTrimEditor(item)}
                 >
-                  {exportingId === item.id ? "Exporting…" : "Trim & MP4"}
+                  {exportingId === item.id ? "Exporting…" : "Open editor"}
                 </button>
-                {trimEditorId === item.id && (
-                  <div className="trim-editor">
-                    <label>
-                      Start{" "}
-                      <input
-                        type="number"
-                        min="0"
-                        max={item.duration}
-                        step="0.1"
-                        value={trimStart}
-                        onChange={(event) =>
-                          setTrimStart(Number(event.target.value))
-                        }
-                      />
-                    </label>
-                    <label>
-                      End{" "}
-                      <input
-                        type="number"
-                        min="0.1"
-                        max={item.duration}
-                        step="0.1"
-                        value={trimEnd}
-                        onChange={(event) =>
-                          setTrimEnd(Number(event.target.value))
-                        }
-                      />
-                    </label>
-                    <button onClick={() => void exportMp4(item)}>
-                      Export MP4
-                    </button>
-                  </div>
-                )}
               </article>
             ))}
           </div>
@@ -2597,6 +2583,92 @@ function RecorderApp() {
           </div>
         )}
       </section>
+      {trimItem && (
+        <div className="trim-backdrop" role="presentation">
+          <section
+            className="trim-editor"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit ${trimItem.title}`}
+          >
+            <header>
+              <div>
+                <strong>Trim video</strong>
+                <span>{trimItem.title}</span>
+              </div>
+              <button
+                className="trim-close"
+                onClick={closeTrimEditor}
+                disabled={exportingId === trimItem.id}
+                aria-label="Close editor"
+                title="Close editor"
+              >
+                <Icon size={17}>
+                  <path d="m7 7 10 10M17 7 7 17" />
+                </Icon>
+              </button>
+            </header>
+            {trimVideoUrl ? (
+              <video className="trim-player" controls src={trimVideoUrl} />
+            ) : (
+              <div className="trim-loading">Opening video…</div>
+            )}
+            <div className="trim-range">
+              <div>
+                <label htmlFor="trim-start">
+                  Keep from <b>{formatTime(trimStart)}</b>
+                </label>
+                <input
+                  id="trim-start"
+                  aria-label="Trim start"
+                  type="range"
+                  min="0"
+                  max={Math.max(0, trimEnd - 0.1)}
+                  step="0.1"
+                  value={trimStart}
+                  onChange={(event) =>
+                    setTrimStart(
+                      Math.min(Number(event.target.value), trimEnd - 0.1),
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <label htmlFor="trim-end">
+                  Keep until <b>{formatTime(trimEnd)}</b>
+                </label>
+                <input
+                  id="trim-end"
+                  aria-label="Trim end"
+                  type="range"
+                  min={Math.min(trimItem.duration, trimStart + 0.1)}
+                  max={trimItem.duration}
+                  step="0.1"
+                  value={trimEnd}
+                  onChange={(event) =>
+                    setTrimEnd(
+                      Math.max(Number(event.target.value), trimStart + 0.1),
+                    )
+                  }
+                />
+              </div>
+            </div>
+            <footer>
+              <span>
+                Exports {formatTime(Math.max(0, trimEnd - trimStart))} as a
+                new MP4. Your original stays unchanged.
+              </span>
+              <button
+                className="trim-export"
+                onClick={() => void exportMp4(trimItem)}
+                disabled={!trimVideoUrl || exportingId === trimItem.id}
+              >
+                {exportingId === trimItem.id ? "Exporting…" : "Export MP4"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
       <canvas ref={canvasRef} className="hidden-canvas" />
     </main>
   );

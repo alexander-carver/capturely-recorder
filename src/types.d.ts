@@ -20,6 +20,7 @@ declare global {
         }) => Promise<RecordingItem>;
         openFolder: (id: string) => Promise<void>;
         shareLink: (id: string) => Promise<string>;
+        mediaUrl: (id: string) => Promise<string>;
         exportMp4: (details: {
           id: string;
           start: number;
